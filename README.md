@@ -10,7 +10,7 @@ The Kafka Extractor supports automated DLQ handling of unretryable events (e.g. 
 Using Pubsub's built-in dead-letter topic option in the subscription as a work-around until this feature is added in the Extractor will currently not have the intended effect.
 
 ### Pubsub extractor microbatching
-Also in contrast to Geist Kafka connector, the Pubsub extractor do not yet support the microbatch option as enabled for a stream with the stream spec field `ops.micrBatch`.
+Also in contrast to Geist Kafka connector, the Pubsub extractor do not yet support the microbatch option as enabled for a stream with the stream spec field `ops.microBatch`.
 
 ## Contact
 info @ zpiroux . com
