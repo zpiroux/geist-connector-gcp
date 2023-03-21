@@ -317,18 +317,8 @@ func (l *loader) createRow(tableSpec entity.Table, rawRowData *entity.Transforme
 			return row, skipRow, err
 		}
 
-		if colName == "" {
-			log.Errorf(l.lgprfx()+"corrupt test event found for col: %+v, logged and disregarded: %v", col, rawRowData)
-			skipRow = true
+		if skipRow = l.shouldSkipRow(col, colName, value); skipRow {
 			break
-		}
-
-		if l.spec.Sink.Config.DiscardInvalidData {
-			if errValidation := validateData(col, value); errValidation != nil {
-				log.Warnf(l.lgprfx()+"invalid data found for col: %+v, err: %v, event logged and disregarded: %v", col, errValidation, rawRowData)
-				skipRow = true
-				break
-			}
 		}
 
 		if !l.columnExists(colName) {
@@ -341,6 +331,21 @@ func (l *loader) createRow(tableSpec entity.Table, rawRowData *entity.Transforme
 		})
 	}
 	return row, skipRow, err
+}
+
+func (l *loader) shouldSkipRow(col entity.Column, colName string, value any) bool {
+	if colName == "" {
+		log.Errorf(l.lgprfx()+"corrupt test event found for col: %+v, event disregarded", col)
+		return true
+	}
+
+	if l.spec.Sink.Config.DiscardInvalidData {
+		if errValidation := validateData(col, value); errValidation != nil {
+			log.Warnf(l.lgprfx()+"invalid data found for col: %+v, err: %v, event disregarded", col, errValidation)
+			return true
+		}
+	}
+	return false
 }
 
 func validateData(col entity.Column, data any) error {

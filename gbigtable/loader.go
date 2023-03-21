@@ -20,11 +20,16 @@ const (
 	PreDefinedRowKeyUuid              = "uuid"
 	PreDefinedRowKeyInvertedTimestamp = "invertedTimestamp"
 	PreDefinedRowKeyKeysInMap         = "keysInMap"
+
+	GarbageCollectionPolicyMaxVersions = "maxVersions"
+	GarbageCollectionPolicyMaxAge      = "maxAge"
 )
 
-const isoTimestampLayoutMilliseconds = "2006-01-02T15:04:05.000Z"
-const openTableRetryCount = 5                // not important to be added to config for now
-const openTableSleepPeriod = 2 * time.Second // not important to be added to config for now
+const (
+	isoTimestampLayoutMilliseconds = "2006-01-02T15:04:05.000Z"
+	openTableRetryCount            = 5               // not important to be added to config for now
+	openTableSleepPeriod           = 2 * time.Second // not important to be added to config for now
+)
 
 type RowKeyValue struct {
 	RowKey string
@@ -385,21 +390,19 @@ func (l *loader) setGCPolicy(ctx context.Context, tableName string, columnFamily
 
 	switch columnFamily.GarbageCollectionPolicy.Type {
 
-	// TODO: Maybe make public const
-	case "maxVersions":
+	case GarbageCollectionPolicyMaxVersions:
 		policy := bigtable.MaxVersionsPolicy(columnFamily.GarbageCollectionPolicy.Value)
 		if err := l.adminClient.SetGCPolicy(ctx, tableName, columnFamily.Name, policy); err != nil {
 			return fmt.Errorf("SetGCPolicy(%s): %v", policy, err)
 		}
 
-	case "maxAge":
+	case GarbageCollectionPolicyMaxAge:
 		maxAgeHours := time.Hour * time.Duration(columnFamily.GarbageCollectionPolicy.Value)
 		policy := bigtable.MaxAgePolicy(maxAgeHours)
 		log.Debugf(l.lgprfx()+"setting maxAge/ttl to %+v", maxAgeHours)
 		if err := l.adminClient.SetGCPolicy(ctx, tableName, columnFamily.Name, policy); err != nil {
 			return fmt.Errorf("SetGCPolicy(%s): %v", policy, err)
 		}
-
 	}
 
 	return nil
