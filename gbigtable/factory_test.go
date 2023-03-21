@@ -16,7 +16,7 @@ func TestGeistIntegration(t *testing.T) {
 
 	lf := NewMockLoaderFactory(ctx, btConfig)
 	err := geistConfig.RegisterLoaderType(lf)
-   asrt.NoError(t, err)
+	asrt.NoError(t, err)
 
 	geist, err := geist.New(ctx, geistConfig)
 	asrt.NoError(t, err)
@@ -55,17 +55,17 @@ func (mlf *MockLoaderFactory) SinkId() string {
 	return mlf.realLoaderFactory.SinkId()
 }
 
-func (mlf *MockLoaderFactory) NewLoader(ctx context.Context, spec *entity.Spec, id string) (entity.Loader, error) {
-	realLoader, err := mlf.realLoaderFactory.NewLoader(ctx, spec, id)
+func (mlf *MockLoaderFactory) NewLoader(ctx context.Context, c entity.Config) (entity.Loader, error) {
+	realLoader, err := mlf.realLoaderFactory.NewLoader(ctx, c)
 	re := realLoader.(*loader)
 	return re, err
 }
 
-func (mlf *MockLoaderFactory) NewSinkExtractor(ctx context.Context, spec *entity.Spec, id string) (entity.Extractor, error) {
-	return newExtractor(spec, id, mlf.realLoaderFactory.client, mlf.realLoaderFactory.adminClient)
+func (mlf *MockLoaderFactory) NewSinkExtractor(ctx context.Context, c entity.Config) (entity.Extractor, error) {
+	return newExtractor(c.Spec, c.ID, mlf.realLoaderFactory.client, mlf.realLoaderFactory.adminClient)
 }
 
-func (mlf *MockLoaderFactory) Close() error {
+func (mlf *MockLoaderFactory) Close(ctx context.Context) error {
 	return nil
 }
 

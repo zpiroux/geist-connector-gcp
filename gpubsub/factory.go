@@ -55,8 +55,8 @@ func (ef *extractorFactory) SourceId() string {
 	return entityTypeId
 }
 
-func (ef *extractorFactory) NewExtractor(ctx context.Context, spec *entity.Spec, id string) (entity.Extractor, error) {
-	return newExtractor(ctx, ef.createPubsubExtractorConfig(spec), id)
+func (ef *extractorFactory) NewExtractor(ctx context.Context, c entity.Config) (entity.Extractor, error) {
+	return newExtractor(ctx, ef.createPubsubExtractorConfig(c.Spec), c.ID)
 }
 
 func (s *extractorFactory) createPubsubExtractorConfig(spec *entity.Spec) *extractorConfig {
@@ -109,6 +109,6 @@ func (s *extractorFactory) topicNamesFromSpec(topicsInSpec []entity.Topics) []st
 	return topicNames
 }
 
-func (lf *extractorFactory) Close() error {
+func (lf *extractorFactory) Close(ctx context.Context) error {
 	return nil
 }

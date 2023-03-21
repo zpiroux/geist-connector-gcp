@@ -11,7 +11,6 @@ import (
 
 const sinkTypeId = "bigtable"
 
-// Config
 type Config struct {
 
 	// ProjectId (required) specifies GCP project ID for this deployment.
@@ -51,15 +50,15 @@ func (lf *loaderFactory) SinkId() string {
 	return sinkTypeId
 }
 
-func (lf *loaderFactory) NewLoader(ctx context.Context, spec *entity.Spec, id string) (entity.Loader, error) {
-	return newLoader(ctx, spec, id, lf.client, lf.adminClient)
+func (lf *loaderFactory) NewLoader(ctx context.Context, c entity.Config) (entity.Loader, error) {
+	return newLoader(ctx, c.Spec, c.ID, lf.client, lf.adminClient)
 }
 
-func (lf *loaderFactory) NewSinkExtractor(ctx context.Context, spec *entity.Spec, id string) (entity.Extractor, error) {
-	return newExtractor(spec, id, lf.client, lf.adminClient)
+func (lf *loaderFactory) NewSinkExtractor(ctx context.Context, c entity.Config) (entity.Extractor, error) {
+	return newExtractor(c.Spec, c.ID, lf.client, lf.adminClient)
 }
 
-func (lf *loaderFactory) Close() error {
+func (lf *loaderFactory) Close(ctx context.Context) error {
 	errorStr := ""
 	if lf.client != nil {
 		if err := lf.client.Close(); err != nil {

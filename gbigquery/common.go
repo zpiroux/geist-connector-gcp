@@ -46,6 +46,8 @@ func (b *defaultBigQueryClient) CreateDatasetRef(datasetId string) *bigquery.Dat
 	return b.client.Dataset(datasetId)
 }
 
+const bqErrFmtStr = "googleapi code: %d, message: %s, details: %#v, errors: %+v"
+
 func (b *defaultBigQueryClient) CreateDataset(ctx context.Context, id string, md *bigquery.DatasetMetadata) error {
 
 	err := b.client.Dataset(id).Create(ctx, md)
@@ -55,7 +57,7 @@ func (b *defaultBigQueryClient) CreateDataset(ctx context.Context, id string, md
 			bqErr := err.Error()
 			e, ok := err.(*googleapi.Error)
 			if ok {
-				bqErr = fmt.Sprintf("googleapi code: %d, message: %s, details: %#v, errors: %+v", e.Code, e.Message, e.Details, e.Errors)
+				bqErr = fmt.Sprintf(bqErrFmtStr, e.Code, e.Message, e.Details, e.Errors)
 			}
 			log.Warnf(b.lgprfx()+"disregarding BQ dataset error: %s", bqErr)
 			err = nil
@@ -78,7 +80,7 @@ func (b *defaultBigQueryClient) CreateTable(ctx context.Context, datasetId strin
 			bqErr := err.Error()
 			e, ok := err.(*googleapi.Error)
 			if ok {
-				bqErr = fmt.Sprintf("googleapi code: %d, message: %s, details: %#v, errors: %+v", e.Code, e.Message, e.Details, e.Errors)
+				bqErr = fmt.Sprintf(bqErrFmtStr, e.Code, e.Message, e.Details, e.Errors)
 			}
 			log.Warnf(b.lgprfx()+"disregarding BQ table error: %v", bqErr)
 			err = nil
@@ -148,7 +150,7 @@ func (b *defaultBigQueryClient) UpdateTable(
 			bqErr := err.Error()
 			e, ok := err.(*googleapi.Error)
 			if ok {
-				bqErr = fmt.Sprintf("googleapi code: %d, message: %s, details: %#v, errors: %+v", e.Code, e.Message, e.Details, e.Errors)
+				bqErr = fmt.Sprintf(bqErrFmtStr, e.Code, e.Message, e.Details, e.Errors)
 			}
 			log.Warnf(b.lgprfx()+"disregarding BQ table update error: %v, returned metadata: %+v", bqErr, tmOut)
 			err = nil

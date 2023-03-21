@@ -11,7 +11,7 @@ import (
 func TestExtractor_ExtractFromSink(t *testing.T) {
 
 	applicableEvents := []string{testEventDir + "platform_change_event_ex1.json"}
-	g := NewGeistTestSpecLoader(t, loadSpecFromFile(t, testSpecDir + "apisrc-bigtablesink-minimal.json"))
+	g := NewGeistTestSpecLoader(t, loadSpecFromFile(t, testSpecDir+"apisrc-bigtablesink-minimal.json"))
 	g.LoadEventsIntoSink(t, applicableEvents, "")
 
 	extractor, err := newExtractor(g.Spec, "some-id", g.Client, g.AdminClient)

@@ -54,7 +54,7 @@ func (l *loader) StreamLoad(ctx context.Context, data []*entity.Transformed) (st
 
 	var (
 		err        error
-		retryable  = true
+		retryable  bool
 		resourceId string
 	)
 
@@ -78,7 +78,9 @@ func (l *loader) StreamLoad(ctx context.Context, data []*entity.Transformed) (st
 	return resourceId, nil, false
 }
 
-func (l *loader) Shutdown() {}
+func (l *loader) Shutdown(ctx context.Context) {
+	// Nothing to shut down
+}
 
 func (l *loader) put(ctx context.Context, kind entity.Kind, t *entity.Transformed) (string, error, bool) {
 

@@ -40,14 +40,14 @@ func (lf *loaderFactory) SinkId() string {
 	return sinkTypeId
 }
 
-func (lf *loaderFactory) NewLoader(ctx context.Context, spec *entity.Spec, id string) (entity.Loader, error) {
-	return newLoader(spec, id, lf.client, spec.Namespace)
+func (lf *loaderFactory) NewLoader(ctx context.Context, c entity.Config) (entity.Loader, error) {
+	return newLoader(c.Spec, c.ID, lf.client, c.Spec.Namespace)
 }
 
-func (lf *loaderFactory) NewSinkExtractor(ctx context.Context, spec *entity.Spec, id string) (entity.Extractor, error) {
-	return newExtractor(spec, id, lf.client, spec.Namespace)
+func (lf *loaderFactory) NewSinkExtractor(ctx context.Context, c entity.Config) (entity.Extractor, error) {
+	return newExtractor(c.Spec, c.ID, lf.client, c.Spec.Namespace)
 }
 
-func (lf *loaderFactory) Close() error {
+func (lf *loaderFactory) Close(ctx context.Context) error {
 	return nil
 }

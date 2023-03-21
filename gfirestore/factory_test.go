@@ -16,12 +16,12 @@ func TestGeistIntegration(t *testing.T) {
 
 	lf := NewMockLoaderFactory(ctx, fsConfig)
 	err := geistConfig.RegisterLoaderType(lf)
-    assert.NoError(t, err)
+	assert.NoError(t, err)
 
 	geist, err := geist.New(ctx, geistConfig)
 	assert.NoError(t, err)
 
-    assert.True(t, geist.Entities()["loader"]["firestore"])
+	assert.True(t, geist.Entities()["loader"]["firestore"])
 	assert.False(t, geist.Entities()["extractor"]["firestore"])
 	assert.False(t, geist.Entities()["loader"]["some_other_sink"])
 
@@ -54,17 +54,17 @@ func (mlf *MockLoaderFactory) SinkId() string {
 	return mlf.realLoaderFactory.SinkId()
 }
 
-func (mlf *MockLoaderFactory) NewLoader(ctx context.Context, spec *entity.Spec, id string) (entity.Loader, error) {
-	realLoader, err := mlf.realLoaderFactory.NewLoader(ctx, spec, id)
+func (mlf *MockLoaderFactory) NewLoader(ctx context.Context, c entity.Config) (entity.Loader, error) {
+	realLoader, err := mlf.realLoaderFactory.NewLoader(ctx, c)
 	re := realLoader.(*loader)
 	return re, err
 }
 
-func (mlf *MockLoaderFactory) NewSinkExtractor(ctx context.Context, spec *entity.Spec, id string) (entity.Extractor, error) {
-	return newExtractor(spec, id, mlf.realLoaderFactory.client, spec.Namespace)
+func (mlf *MockLoaderFactory) NewSinkExtractor(ctx context.Context, c entity.Config) (entity.Extractor, error) {
+	return newExtractor(c.Spec, c.ID, mlf.realLoaderFactory.client, c.Spec.Namespace)
 }
 
-func (mlf *MockLoaderFactory) Close() error {
+func (mlf *MockLoaderFactory) Close(ctx context.Context) error {
 	return nil
 }
 
