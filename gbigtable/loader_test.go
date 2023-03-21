@@ -3,7 +3,7 @@ package gbigtable
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"testing"
 
 	"cloud.google.com/go/bigtable"
@@ -77,7 +77,7 @@ func NewGeistTestSpecLoader(t *testing.T, geistSpec []byte) *GeistTestSpecLoader
 }
 
 func loadSpecFromFile(t *testing.T, path string) []byte {
-	fileBytes, err := ioutil.ReadFile(path)
+	fileBytes, err := os.ReadFile(path)
 	_assert.NoError(t, err)
 	return fileBytes
 }
@@ -137,7 +137,7 @@ func (g *GeistTestSpecLoader) LoadEventsIntoSink(t *testing.T, applicableEvents 
 	ctx := context.Background()
 
 	for _, event := range applicableEvents {
-		fileBytes, err := ioutil.ReadFile(event)
+		fileBytes, err := os.ReadFile(event)
 		assert.NoError(err)
 		output, err := g.Transformer.Transform(context.Background(), fileBytes, &retryable)
 		assert.NoError(err)
@@ -149,7 +149,7 @@ func (g *GeistTestSpecLoader) LoadEventsIntoSink(t *testing.T, applicableEvents 
 
 	// Test with a non-applicable event, transform output should be nil
 	if len(nonApplicableEvent) > 0 {
-		fileBytes, err := ioutil.ReadFile(nonApplicableEvent)
+		fileBytes, err := os.ReadFile(nonApplicableEvent)
 		assert.NoError(err)
 		output, err := g.Transformer.Transform(context.Background(), fileBytes, &retryable)
 		assert.NoError(err)

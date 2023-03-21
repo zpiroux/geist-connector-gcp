@@ -3,7 +3,7 @@ package gbigquery
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	testDirPath  = "./test/"
-	testSpecDir  = testDirPath + "specs/"
+	testDirPath = "./test/"
+	testSpecDir = testDirPath + "specs/"
 
 	fooEventSpec = "kafkasrc-bigquerysink-fooevents.json"
 )
@@ -71,6 +71,8 @@ func TestLoader_StreamLoad(t *testing.T) {
 	assert.Equal(t, "testEvent2eventId", mockDb["niceEventName-insertId"])
 }
 
+const testTableFooEvents = "geisttest-fooevents_v1"
+
 func TestSpecificStreams(t *testing.T) {
 	ctx := context.Background()
 
@@ -85,10 +87,12 @@ func TestSpecificStreams(t *testing.T) {
 
 	md, err := loader.createTableMetadata(ctx, spec.Sink.Config.Tables[0])
 	assert.NoError(t, err)
-	assert.Equal(t, md, tables["geisttest-fooevents_v1"])
-	assert.Equal(t, []string{"customerId"}, tables["geisttest-fooevents_v1"].Clustering.Fields)
-	assert.Equal(t, bigquery.TimePartitioningType("DAY"), tables["geisttest-fooevents_v1"].TimePartitioning.Type)
+	assert.Equal(t, md, tables[testTableFooEvents])
+	assert.Equal(t, []string{"customerId"}, tables[testTableFooEvents].Clustering.Fields)
+	assert.Equal(t, bigquery.TimePartitioningType("DAY"), tables[testTableFooEvents].TimePartitioning.Type)
 }
+
+const testTableDynColumns = "geisttest-gotest_dynamiccolumns"
 
 func TestDynamicColumnCreation(t *testing.T) {
 
@@ -106,7 +110,7 @@ func TestDynamicColumnCreation(t *testing.T) {
 	// Verify table were correctly created according to spec
 	md, err := loader.createTableMetadata(ctx, spec.Sink.Config.Tables[0])
 	assert.NoError(t, err)
-	assert.Equal(t, md, tables["geisttest-gotest_dynamiccolumns"])
+	assert.Equal(t, md, tables[testTableDynColumns])
 
 	transformer := transform.NewTransformer(spec)
 
@@ -115,7 +119,7 @@ func TestDynamicColumnCreation(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Table should only have one column before event is inserted
-	tm := tables["geisttest-gotest_dynamiccolumns"]
+	tm := tables[testTableDynColumns]
 	assert.Equal(t, 1, len(tm.Schema))
 	assert.Equal(t, "dateIngested", tm.Schema[0].Name)
 
@@ -124,7 +128,7 @@ func TestDynamicColumnCreation(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Table should have two columns after event is inserted
-	tm = tables["geisttest-gotest_dynamiccolumns"]
+	tm = tables[testTableDynColumns]
 	assert.Equal(t, 2, len(tm.Schema))
 	assert.Equal(t, "COOL_THING_HAPPENED", tm.Schema[1].Name)
 
@@ -262,7 +266,7 @@ func TestDataValidation(t *testing.T) {
 }
 
 func getTestSpec(specFile string) (*entity.Spec, error) {
-	fileBytes, err := ioutil.ReadFile(testSpecDir + specFile)
+	fileBytes, err := os.ReadFile(testSpecDir + specFile)
 	if err != nil {
 		return nil, err
 	}

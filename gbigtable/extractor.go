@@ -9,6 +9,8 @@ import (
 	"github.com/zpiroux/geist/entity"
 )
 
+var ErrNotApplicable = errors.New("not applicable")
+
 type QueryType int
 
 const (
@@ -85,9 +87,10 @@ func (g *extractor) convertQueryToNative(query entity.ExtractorQuery) Query {
 func (e *extractor) extractFromSink(ctx context.Context, query Query, result *[]*entity.Transformed) (error, bool) {
 
 	var (
-		row bigtable.Row
-		err error
+		err       error
+		retryable bool
 	)
+
 	// lazy init of open tables in case the BT loader is creating tables at GEIST startup
 	if len(e.openedTables) == 0 {
 		if err = e.openTables(ctx); err != nil {
@@ -97,33 +100,39 @@ func (e *extractor) extractFromSink(ctx context.Context, query Query, result *[]
 
 	switch query.Type {
 	case KeyValue:
-
-		for _, table := range e.openedTables {
-			row, err = table.ReadRow(ctx, query.RowKey, bigtable.RowFilter(bigtable.LatestNFilter(query.LatestN)))
-			if err != nil {
-				return err, true
-			}
-			if len(row) > 0 {
-				break
-			}
-		}
-
-		if len(row) == 0 {
-			return errors.New("row with key " + query.RowKey + " not found"), false
-		}
-		// TODO: Keep below comment and make output type configurable - transform recreation or raw output
-		// transformed, err, retryable := e.recreateTransformed(&row)
-		transformed, err, retryable := e.createTransformedAsRow(query.RowKey, &row)
-		if err != nil {
-			return err, retryable
-		}
-		*result = append(*result, transformed)
-
+		err, retryable = e.extractWithKeyValue(ctx, query, result)
 	default:
 		return fmt.Errorf("queryType '%v' not supported", query.Type), false
 	}
 
-	return nil, false
+	return err, retryable
+}
+
+func (e *extractor) extractWithKeyValue(ctx context.Context, query Query, result *[]*entity.Transformed) (error, bool) {
+	var (
+		row bigtable.Row
+		err error
+	)
+	for _, table := range e.openedTables {
+		row, err = table.ReadRow(ctx, query.RowKey, bigtable.RowFilter(bigtable.LatestNFilter(query.LatestN)))
+		if err != nil {
+			return err, true
+		}
+		if len(row) > 0 {
+			break
+		}
+	}
+
+	if len(row) == 0 {
+		return errors.New("row with key " + query.RowKey + " not found"), false
+	}
+	// TODO: Keep below comment and make output type configurable - transform recreation or raw output
+	// transformed, err, retryable := e.recreateTransformed(&row)
+	transformed, err, retryable := e.createTransformedAsRow(query.RowKey, &row)
+	if err == nil {
+		*result = append(*result, transformed)
+	}
+	return err, retryable
 }
 
 func (e *extractor) StreamExtract(
@@ -132,16 +141,16 @@ func (e *extractor) StreamExtract(
 	err *error,
 	retryable *bool) {
 
-	*err = errors.New("not applicable")
+	*err = ErrNotApplicable
 }
 
 func (e *extractor) SendToSource(ctx context.Context, eventData any) (string, error) {
 
-	return "", errors.New("not applicable")
+	return "", ErrNotApplicable
 }
 
 func (e *extractor) Extract(ctx context.Context, query entity.ExtractorQuery, result any) (error, bool) {
-	return errors.New("not applicable"), false
+	return ErrNotApplicable, false
 }
 
 func (e *extractor) openTables(ctx context.Context) error {

@@ -61,15 +61,15 @@ func (mef *MockExtractorFactory) SourceId() string {
 	return mef.realExtractorFactory.SourceId()
 }
 
-func (mef *MockExtractorFactory) NewExtractor(ctx context.Context, spec *entity.Spec, id string) (entity.Extractor, error) {
-	realExtractor, err := mef.realExtractorFactory.NewExtractor(ctx, spec, id)
+func (mef *MockExtractorFactory) NewExtractor(ctx context.Context, c entity.Config) (entity.Extractor, error) {
+	realExtractor, err := mef.realExtractorFactory.NewExtractor(ctx, c)
 	re := realExtractor.(*extractor)
 	re.SetSub(&MockSubscription{})
 	re.SetMsgAckNackFunc(ack, nack)
 	return re, err
 }
 
-func (lf *MockExtractorFactory) Close() error {
+func (lf *MockExtractorFactory) Close(ctx context.Context) error {
 	return nil
 }
 

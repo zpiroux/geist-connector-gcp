@@ -96,29 +96,9 @@ func newExtractor(ctx context.Context, config *extractorConfig, id string) (*ext
 		return extractor, fmt.Errorf("pubsub subscription type %s not supported", spec.Subscription.Type)
 	}
 
-	// TODO: Add config and default values for sub expiration
-	extractor.sub, err = config.client.CreateSubscription(
-		ctx,
-		subName,
-		pubsub.SubscriptionConfig{Topic: topic})
-
+	extractor.sub, err = createSubscription(ctx, config, spec.Subscription.Type, subName, topic)
 	if err != nil {
-		// These if/elses are caused by the not so user friendly error handling design in GCP Pubsub Go lib.
-		if spec.Subscription.Type == SubTypeShared {
-			if e, ok := err.(*googleapi.Error); ok {
-				if e.Code == ALREADY_EXISTS {
-					extractor.sub = config.client.Subscription(subName)
-					log.Infof(extractor.lgprfx()+"topic %s already exists (googleapi err: %#v)", topic, e)
-				}
-			} else if strings.Contains(err.Error(), "AlreadyExists") {
-				extractor.sub = config.client.Subscription(subName)
-				log.Infof(extractor.lgprfx()+"topic %s already exists (err: %v)", topic, err)
-			} else {
-				return extractor, err
-			}
-		} else {
-			return extractor, err
-		}
+		return nil, err
 	}
 
 	receiveSettings := pubsub.ReceiveSettings{
@@ -140,6 +120,32 @@ func newExtractor(ctx context.Context, config *extractorConfig, id string) (*ext
 
 	extractor.topic = topic
 	return extractor, nil
+}
+
+func createSubscription(ctx context.Context, config *extractorConfig, subType string, subName string, topic *pubsub.Topic) (*pubsub.Subscription, error) {
+	// TODO: Add config and default values for sub expiration
+	sub, err := config.client.CreateSubscription(
+		ctx,
+		subName,
+		pubsub.SubscriptionConfig{Topic: topic})
+
+	if err != nil {
+		// These if/elses are caused by the not so user friendly error handling design in GCP Pubsub Go lib.
+		if subType == SubTypeShared {
+			if e, ok := err.(*googleapi.Error); ok {
+				if e.Code == ALREADY_EXISTS {
+					sub = config.client.Subscription(subName)
+				}
+			} else if strings.Contains(err.Error(), "AlreadyExists") {
+				sub = config.client.Subscription(subName)
+			} else {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	}
+	return sub, nil
 }
 
 func (e *extractor) StreamExtract(
@@ -179,41 +185,7 @@ func (e *extractor) StreamExtract(
 	msgChan := make(chan *pubsub.Message)
 	defer close(msgChan)
 	psReceiveCtx, cancel := context.WithCancel(ctx)
-	go func() {
-		shutdownInProgress := false
-		for msg := range msgChan {
-
-			if shutdownInProgress {
-				e.nack(msg)
-				continue
-			}
-
-			// No support for microbatching in pubsub extractor for now
-			events := []entity.Event{{
-				Key:  []byte(msg.ID),
-				Ts:   msg.PublishTime,
-				Data: msg.Data,
-			}}
-
-			// Send event back to Executor for further downstream processing
-			result := reportEvent(ctx, events)
-
-			*err = result.Error
-			*retryable = result.Retryable
-
-			switch e.handleEventProcessingResult(ctx, msg, result, err, retryable) {
-
-			case actionShutdown:
-				log.Infof(e.lgprfx()+"shutting down extractor, reportEvent result: %+v", result)
-				shutdownInProgress = true
-				cancel()
-				e.nack(msg)
-			case actionContinue:
-				e.ack(msg)
-				atomic.AddUint64(&e.eventCount, 1)
-			}
-		}
-	}()
+	go e.propagateEvents(ctx, reportEvent, msgChan, cancel, err, retryable)
 
 	for {
 		errPubsub = e.sub.Receive(psReceiveCtx, func(ctx context.Context, msg *pubsub.Message) {
@@ -247,6 +219,49 @@ func (e *extractor) StreamExtract(
 
 	if errPubsub != nil {
 		*err = errPubsub
+	}
+}
+
+func (e *extractor) propagateEvents(
+	ctx context.Context,
+	reportEvent entity.ProcessEventFunc,
+	msgChan chan *pubsub.Message,
+	cancel context.CancelFunc,
+	err *error,
+	retryable *bool) {
+
+	shutdownInProgress := false
+	for msg := range msgChan {
+
+		if shutdownInProgress {
+			e.nack(msg)
+			continue
+		}
+
+		// No support for microbatching in pubsub extractor for now
+		events := []entity.Event{{
+			Key:  []byte(msg.ID),
+			Ts:   msg.PublishTime,
+			Data: msg.Data,
+		}}
+
+		// Send event back to Executor for further downstream processing
+		result := reportEvent(ctx, events)
+
+		*err = result.Error
+		*retryable = result.Retryable
+
+		switch e.handleEventProcessingResult(ctx, msg, result, err, retryable) {
+
+		case actionShutdown:
+			log.Infof(e.lgprfx()+"shutting down extractor, reportEvent result: %+v", result)
+			shutdownInProgress = true
+			cancel()
+			e.nack(msg)
+		case actionContinue:
+			e.ack(msg)
+			atomic.AddUint64(&e.eventCount, 1)
+		}
 	}
 }
 

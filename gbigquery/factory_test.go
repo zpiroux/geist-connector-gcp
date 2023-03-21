@@ -16,7 +16,7 @@ func TestGeistIntegration(t *testing.T) {
 
 	lf := NewMockLoaderFactory(ctx, bqConfig)
 	err := geistConfig.RegisterLoaderType(lf)
-   assert.NoError(t, err)
+	assert.NoError(t, err)
 
 	geist, err := geist.New(ctx, geistConfig)
 	assert.NoError(t, err)
@@ -54,15 +54,15 @@ func (mlf *MockLoaderFactory) SinkId() string {
 	return mlf.realLoaderFactory.SinkId()
 }
 
-func (mlf *MockLoaderFactory) NewLoader(ctx context.Context, spec *entity.Spec, id string) (entity.Loader, error) {
-	return newLoader(ctx, spec, id, &MockBigQueryClient{}, &bigQueryMetadataMutex)
+func (mlf *MockLoaderFactory) NewLoader(ctx context.Context, c entity.Config) (entity.Loader, error) {
+	return newLoader(ctx, c.Spec, c.ID, &MockBigQueryClient{}, &bigQueryMetadataMutex)
 }
 
-func (mlf *MockLoaderFactory) NewSinkExtractor(ctx context.Context, spec *entity.Spec, id string) (entity.Extractor, error) {
+func (mlf *MockLoaderFactory) NewSinkExtractor(ctx context.Context, c entity.Config) (entity.Extractor, error) {
 	return nil, nil
 }
 
-func (mlf *MockLoaderFactory) Close() error {
+func (mlf *MockLoaderFactory) Close(ctx context.Context) error {
 	return nil
 }
 

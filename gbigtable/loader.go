@@ -131,7 +131,9 @@ func (l *loader) StreamLoad(ctx context.Context, data []*entity.Transformed) (st
 	return rowKey, err, retryable
 }
 
-func (l *loader) Shutdown() {}
+func (l *loader) Shutdown(ctx context.Context) {
+	// Nothing to shut down
+}
 
 func (l *loader) upsertDataFromMap(ctx context.Context, table entity.Table, event *entity.Transformed) (string, error, bool) {
 
@@ -179,17 +181,40 @@ func (l *loader) upsertDataFromMap(ctx context.Context, table entity.Table, even
 }
 
 func (l *loader) upsertData(ctx context.Context, table entity.Table, event *entity.Transformed) (string, error, bool) {
-	var (
-		value  []byte
-		rowKey string
-	)
 
 	if event == nil {
 		return "", errors.New("upsertData received nil event"), false
 	}
 
+	mut, err, retryable := l.createMutation(ctx, table, event)
+	if err != nil {
+		return "", err, retryable
+	}
+
+	rowKey := l.createRowKey(ctx, table, event)
+	if rowKey == "" {
+		return rowKey, errors.New("created rowKey is empty"), false
+	}
+
+	t := l.openedTables[table.Name]
+	if t == nil {
+		return rowKey, fmt.Errorf("could not find opened table %s, when inserting row with rowKey: %s, mut: %v", table.Name, rowKey, mut), false
+	}
+	if err := t.Apply(ctx, rowKey, mut); err != nil {
+		return rowKey, fmt.Errorf("table.Apply() failed with: %v, rowKey: %s, mut: %v", err, rowKey, mut), true
+	}
+
+	if l.spec.Ops.LogEventData {
+		log.Infof(l.lgprfx()+"(table: %s) Successfully wrote row with key: %s", table.Name, rowKey)
+	}
+	return rowKey, nil, true
+}
+
+func (l *loader) createMutation(ctx context.Context, table entity.Table, event *entity.Transformed) (*bigtable.Mutation, error, bool) {
+	var value []byte
 	mut := bigtable.NewMutation()
 	timestamp := bigtable.Now()
+
 	for _, family := range table.ColumnFamilies {
 		for _, column := range family.ColumnQualifiers {
 
@@ -208,35 +233,19 @@ func (l *loader) upsertData(ctx context.Context, table entity.Table, event *enti
 			case RowKeyValue:
 				value = event.Data[column.Id].(RowKeyValue).Value
 			default:
-				return rowKey, fmt.Errorf("unsupported type in Transformed: %#v, when upserting to BT", event.Data[column.Id]), false
+				return nil, fmt.Errorf("unsupported type in Transformed: %#v, when upserting to BT", event.Data[column.Id]), false
 			}
 			columnName, err := l.generateColumnName(column, event)
 
 			if err != nil {
-				return "", err, false
+				return nil, err, false
 			}
 
 			mut.Set(family.Name, columnName, timestamp, value)
 		}
 	}
+	return mut, nil, false
 
-	rowKey = l.createRowKey(ctx, table, event)
-	if rowKey == "" {
-		return rowKey, errors.New("created rowKey is empty"), false
-	}
-
-	t := l.openedTables[table.Name]
-	if t == nil {
-		return rowKey, fmt.Errorf("could not find opened table %s, when inserting row with rowKey: %s, mut: %v", table.Name, rowKey, mut), false
-	}
-	if err := t.Apply(ctx, rowKey, mut); err != nil {
-		return rowKey, fmt.Errorf("table.Apply() failed with: %v, rowKey: %s, mut: %v", err, rowKey, mut), true
-	}
-
-	if l.spec.Ops.LogEventData {
-		log.Infof(l.lgprfx()+"(table: %s) Successfully wrote row with key: %s, value: %s", table.Name, rowKey, string(value))
-	}
-	return rowKey, nil, true
 }
 
 func (l *loader) generateColumnName(column entity.ColumnQualifier, event *entity.Transformed) (string, error) {
@@ -348,28 +357,35 @@ func (l *loader) createTables(ctx context.Context) error {
 			return fmt.Errorf("could not read info for table %s: %v", table.Name, err)
 		}
 
-		for _, columnFamily := range table.ColumnFamilies {
-
-			if !sliceContains(tblInfo.Families, columnFamily.Name) {
-				if err := l.adminClient.CreateColumnFamily(ctx, table.Name, columnFamily.Name); err != nil {
-					return fmt.Errorf("could not create column family %s: %v", columnFamily.Name, err)
-				}
-
-				if err := l.setGCPolicy(ctx, table.Name, columnFamily); err != nil {
-					return err
-				}
-			}
+		if err = l.createColumnFamilies(ctx, table, tblInfo); err != nil {
+			return err
 		}
 	}
 
 	return err
 }
 
+func (l *loader) createColumnFamilies(ctx context.Context, table entity.Table, tblInfo *bigtable.TableInfo) error {
+
+	for _, columnFamily := range table.ColumnFamilies {
+		if !sliceContains(tblInfo.Families, columnFamily.Name) {
+			if err := l.adminClient.CreateColumnFamily(ctx, table.Name, columnFamily.Name); err != nil {
+				return fmt.Errorf("could not create column family %s: %v", columnFamily.Name, err)
+			}
+
+			if err := l.setGCPolicy(ctx, table.Name, columnFamily); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (l *loader) setGCPolicy(ctx context.Context, tableName string, columnFamily entity.ColumnFamily) error {
 
 	switch columnFamily.GarbageCollectionPolicy.Type {
 
-	// TODO: Maybe make Enum
+	// TODO: Maybe make public const
 	case "maxVersions":
 		policy := bigtable.MaxVersionsPolicy(columnFamily.GarbageCollectionPolicy.Value)
 		if err := l.adminClient.SetGCPolicy(ctx, tableName, columnFamily.Name, policy); err != nil {

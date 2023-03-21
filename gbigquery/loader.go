@@ -94,7 +94,9 @@ func probableTableUpdatingError(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "no such field")
 }
 
-func (l *loader) Shutdown() {}
+func (l *loader) Shutdown(ctx context.Context) {
+	// Nothing to shut down
+}
 
 func (l *loader) init(ctx context.Context) error {
 
@@ -118,21 +120,9 @@ func (l *loader) init(ctx context.Context) error {
 	if err != nil && status == Unknown {
 		return err
 	}
-	if status == NonExistent {
-		md := &bigquery.DatasetMetadata{
-			Location: DefaultBigQueryDatasetLocation,
-		}
-		if tableSpec.DatasetCreation != nil {
-			md.Description = tableSpec.DatasetCreation.Description
-			if tableSpec.DatasetCreation.Location != "" {
-				md.Location = tableSpec.DatasetCreation.Location
-			}
-		}
-		if err := l.client.CreateDataset(ctx, tableSpec.Dataset, md); err != nil {
-			return err
-		}
-	} else {
-		log.Debugf(l.lgprfx()+"dataset %v already exists, no need to create it", tableSpec.Dataset)
+
+	if err = l.ensureDatasetPresent(ctx, tableSpec, status); err != nil {
+		return err
 	}
 
 	l.metadata, status, err = l.client.GetTableMetadata(ctx, l.client.CreateTableRef(tableSpec.Dataset, tableSpec.Name))
@@ -140,25 +130,92 @@ func (l *loader) init(ctx context.Context) error {
 		return err
 	}
 
-	if status == NonExistent {
-		l.metadata, err = l.createTableMetadata(ctx, tableSpec)
-		if err != nil {
-			return err
-		}
-		l.table, err = l.client.CreateTable(ctx, tableSpec.Dataset, tableSpec.Name, l.metadata)
-	} else {
-		log.Debugf(l.lgprfx()+"table %v already exists, no need to create it", l.table)
+	if err = l.ensureTablePresent(ctx, tableSpec, status); err != nil {
+		return err
 	}
 
 	l.inserter = l.client.GetTableInserter(l.table)
 	return err
 }
 
+func (l *loader) ensureDatasetPresent(ctx context.Context, tableSpec entity.Table, status DatasetTableStatus) error {
+	if status != NonExistent {
+		return nil
+	}
+
+	md := &bigquery.DatasetMetadata{
+		Location: DefaultBigQueryDatasetLocation,
+	}
+	if tableSpec.DatasetCreation != nil {
+		md.Description = tableSpec.DatasetCreation.Description
+		if tableSpec.DatasetCreation.Location != "" {
+			md.Location = tableSpec.DatasetCreation.Location
+		}
+	}
+	if err := l.client.CreateDataset(ctx, tableSpec.Dataset, md); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (l *loader) ensureTablePresent(ctx context.Context, tableSpec entity.Table, status DatasetTableStatus) (err error) {
+	if status != NonExistent {
+		return nil
+	}
+	l.metadata, err = l.createTableMetadata(ctx, tableSpec)
+	if err != nil {
+		return err
+	}
+	l.table, err = l.client.CreateTable(ctx, tableSpec.Dataset, tableSpec.Name, l.metadata)
+	return err
+}
+
 // Creates table meta data based on config in stream spec, for use in table creation
 func (l *loader) createTableMetadata(ctx context.Context, tableSpec entity.Table) (*bigquery.TableMetadata, error) {
 
-	var columns []entity.Column
+	columns, err := l.createTableMetadataColumns(tableSpec)
+	if err != nil {
+		return nil, err
+	}
 
+	schemaJSON, err := json.Marshal(columns)
+	if err != nil {
+		return nil, err
+	}
+	schema, err := bigquery.SchemaFromJSON(schemaJSON)
+	if err != nil || len(schema) == 0 {
+		return nil, fmt.Errorf("could not create BigQuery schema from stream spec, err: %v", err)
+	}
+
+	md := &bigquery.TableMetadata{
+		Schema: schema,
+	}
+
+	if tableSpec.TableCreation == nil {
+		return md, err
+	}
+
+	md.Description = tableSpec.TableCreation.Description
+	md.RequirePartitionFilter = tableSpec.TableCreation.RequirePartitionFilter
+
+	if len(tableSpec.TableCreation.Clustering) > 0 {
+		md.Clustering = &bigquery.Clustering{Fields: tableSpec.TableCreation.Clustering}
+	}
+
+	if tableSpec.TableCreation.TimePartitioning != nil {
+		md.TimePartitioning = &bigquery.TimePartitioning{
+			Type:       bigquery.TimePartitioningType(tableSpec.TableCreation.TimePartitioning.Type),
+			Expiration: time.Duration(tableSpec.TableCreation.TimePartitioning.ExpirationHours) * time.Hour,
+			Field:      tableSpec.TableCreation.TimePartitioning.Field,
+		}
+	}
+
+	return md, err
+}
+
+func (l *loader) createTableMetadataColumns(tableSpec entity.Table) ([]entity.Column, error) {
+	var columns []entity.Column
 	for _, col := range tableSpec.Columns {
 		if col.Name != "" {
 			columns = append(columns, col)
@@ -178,38 +235,7 @@ func (l *loader) createTableMetadata(ctx context.Context, tableSpec entity.Table
 	if len(columns) == 0 {
 		return nil, fmt.Errorf(l.lgprfx() + "no columns could be generated from spec")
 	}
-
-	schemaJSON, err := json.Marshal(columns)
-	if err != nil {
-		return nil, err
-	}
-	schema, err := bigquery.SchemaFromJSON(schemaJSON)
-	if err != nil || len(schema) == 0 {
-		return nil, fmt.Errorf("could not create BigQuery schema from stream spec, err: %v", err)
-	}
-
-	md := &bigquery.TableMetadata{
-		Schema: schema,
-	}
-
-	if tableSpec.TableCreation != nil {
-
-		md.Description = tableSpec.TableCreation.Description
-		md.RequirePartitionFilter = tableSpec.TableCreation.RequirePartitionFilter
-
-		if len(tableSpec.TableCreation.Clustering) > 0 {
-			md.Clustering = &bigquery.Clustering{Fields: tableSpec.TableCreation.Clustering}
-		}
-
-		if tableSpec.TableCreation.TimePartitioning != nil {
-			md.TimePartitioning = &bigquery.TimePartitioning{
-				Type:       bigquery.TimePartitioningType(tableSpec.TableCreation.TimePartitioning.Type),
-				Expiration: time.Duration(tableSpec.TableCreation.TimePartitioning.ExpirationHours) * time.Hour,
-				Field:      tableSpec.TableCreation.TimePartitioning.Field,
-			}
-		}
-	}
-	return md, err
+	return columns, nil
 }
 
 type RowItem struct {
@@ -219,11 +245,15 @@ type RowItem struct {
 
 type Columns map[string]entity.Column
 
+// createRows processes each incoming transformed event and create the BQ rows to be
+// inserted according to the sink spec.
 func (l *loader) createRows(data []*entity.Transformed) ([]*Row, Columns, error) {
 
 	var (
+		row     *Row
 		rows    []*Row
 		skipRow bool
+		err     error
 	)
 	tableSpec := l.spec.Sink.Config.Tables[0]
 	newColumns := make(Columns)
@@ -235,67 +265,82 @@ func (l *loader) createRows(data []*entity.Transformed) ([]*Row, Columns, error)
 			skipRow = false
 			continue
 		}
-		row := NewRow()
 
-		// Try to find each row item in the incoming row data item, based on column spec
-		for _, col := range tableSpec.Columns {
-
-			if skipRow {
-				break
-			}
-
-			if value, ok := rawRowData.Data[col.ValueFromId]; ok {
-
-				colName, err := getColumnName(col, rawRowData)
-				if err != nil {
-					return rows, nil, err
-				}
-
-				if colName == "" {
-					log.Errorf(l.lgprfx()+"corrupt test event found for col: %+v, logged and disregarded: %v", col, rawRowData)
-					skipRow = true
-					break
-				}
-
-				if l.spec.Sink.Config.DiscardInvalidData {
-					if errValidation := validateData(col, value); errValidation != nil {
-						log.Warnf(l.lgprfx()+"invalid data found for col: %+v, err: %v, event logged and disregarded: %v", col, errValidation, rawRowData)
-						skipRow = true
-						break
-					}
-				}
-
-				if !l.columnExists(colName) {
-					newColumns[colName] = col
-				}
-
-				row.AddItem(&RowItem{
-					Name:  colName,
-					Value: value,
-				})
-
-			} else if col.ValueFromId == entity.GeistIngestionTime {
-				row.AddItem(&RowItem{
-					Name:  col.Name,
-					Value: time.Now().UTC(),
-				})
-			}
+		row, skipRow, err = l.createRow(tableSpec, rawRowData, newColumns)
+		if err != nil {
+			return rows, nil, err
 		}
 
-		if row.Size() > 0 && !skipRow {
-			if tableSpec.InsertIdFromId != "" {
-				if insertId, ok := rawRowData.Data[tableSpec.InsertIdFromId]; ok {
-					row.InsertId, ok = insertId.(string)
-					if !ok {
-						log.Errorf(l.lgprfx()+"corrupt insert ID in event with data %v, tableSpec: %+v", rawRowData, tableSpec)
-					}
+		if row.Size() == 0 || skipRow {
+			continue
+		}
+
+		if tableSpec.InsertIdFromId != "" {
+			if insertId, ok := rawRowData.Data[tableSpec.InsertIdFromId]; ok {
+				row.InsertId, ok = insertId.(string)
+				if !ok {
+					log.Errorf(l.lgprfx()+"corrupt insert ID in event with data %v, tableSpec: %+v", rawRowData, tableSpec)
 				}
 			}
-			rows = append(rows, row)
 		}
+		rows = append(rows, row)
 	}
 
 	return rows, newColumns, nil
+}
+
+func (l *loader) createRow(tableSpec entity.Table, rawRowData *entity.Transformed, newColumns Columns) (row *Row, skipRow bool, err error) {
+
+	row = NewRow()
+	// Try to find each row item in the incoming row data item, based on column spec
+	for _, col := range tableSpec.Columns {
+
+		if skipRow {
+			break
+		}
+
+		if col.ValueFromId == entity.GeistIngestionTime {
+			row.AddItem(&RowItem{
+				Name:  col.Name,
+				Value: time.Now().UTC(),
+			})
+			continue
+		}
+
+		value, ok := rawRowData.Data[col.ValueFromId]
+		if !ok {
+			continue
+		}
+
+		colName, err := getColumnName(col, rawRowData)
+		if err != nil {
+			return row, skipRow, err
+		}
+
+		if colName == "" {
+			log.Errorf(l.lgprfx()+"corrupt test event found for col: %+v, logged and disregarded: %v", col, rawRowData)
+			skipRow = true
+			break
+		}
+
+		if l.spec.Sink.Config.DiscardInvalidData {
+			if errValidation := validateData(col, value); errValidation != nil {
+				log.Warnf(l.lgprfx()+"invalid data found for col: %+v, err: %v, event logged and disregarded: %v", col, errValidation, rawRowData)
+				skipRow = true
+				break
+			}
+		}
+
+		if !l.columnExists(colName) {
+			newColumns[colName] = col
+		}
+
+		row.AddItem(&RowItem{
+			Name:  colName,
+			Value: value,
+		})
+	}
+	return row, skipRow, err
 }
 
 func validateData(col entity.Column, data any) error {
@@ -321,30 +366,15 @@ func validateData(col entity.Column, data any) error {
 			}
 		}
 	case string(bigquery.BooleanFieldType), "BOOL":
-		switch data.(type) {
-		case bool, nil:
-			correctType = true
-		}
+		correctType = isBoolFieldType(data)
 	case string(bigquery.IntegerFieldType), "INT64":
-		switch data.(type) {
-		case int, int32, int64, nil:
-			correctType = true
-		}
+		correctType = isIntFieldType(data)
 	case string(bigquery.StringFieldType):
-		switch data.(type) {
-		case string, nil:
-			correctType = true
-		}
+		correctType = isStringFieldType(data)
 	case string(bigquery.FloatFieldType), "FLOAT64", string(bigquery.NumericFieldType):
-		switch data.(type) {
-		case float64, float32, int, int32, int64, nil:
-			correctType = true
-		}
+		correctType = isFloatFieldType(data)
 	case string(bigquery.BytesFieldType):
-		switch data.(type) {
-		case []byte, nil:
-			correctType = true
-		}
+		correctType = isByteFieldType(data)
 	default:
 		// No data validation for RECORD, array/repeated fields
 		correctType = true
@@ -355,6 +385,46 @@ func validateData(col entity.Column, data any) error {
 		err = fmt.Errorf("invalid field value: %v", data)
 	}
 	return err
+}
+
+func isBoolFieldType(d any) (r bool) {
+	switch d.(type) {
+	case bool, nil:
+		r = true
+	}
+	return
+}
+
+func isIntFieldType(d any) (r bool) {
+	switch d.(type) {
+	case int, int32, int64, nil:
+		r = true
+	}
+	return
+}
+
+func isStringFieldType(d any) (r bool) {
+	switch d.(type) {
+	case string, nil:
+		r = true
+	}
+	return
+}
+
+func isFloatFieldType(d any) (r bool) {
+	switch d.(type) {
+	case float64, float32, int, int32, int64, nil:
+		r = true
+	}
+	return
+}
+
+func isByteFieldType(d any) (r bool) {
+	switch d.(type) {
+	case []byte, nil:
+		r = true
+	}
+	return
 }
 
 func (l *loader) handleDynamicColumnUpdates(ctx context.Context, newColumns Columns) error {

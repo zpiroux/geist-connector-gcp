@@ -25,8 +25,8 @@ type Config struct {
 var bigQueryMetadataMutex sync.Mutex
 
 type loaderFactory struct {
-	config      Config
-	client      *bigquery.Client
+	config Config
+	client *bigquery.Client
 }
 
 func NewLoaderFactory(ctx context.Context, config Config) (entity.LoaderFactory, error) {
@@ -34,7 +34,7 @@ func NewLoaderFactory(ctx context.Context, config Config) (entity.LoaderFactory,
 	lf := &loaderFactory{
 		config: config,
 	}
-	
+
 	if config.ProjectId == "" {
 		return nil, errors.New("no project id set")
 	}
@@ -49,15 +49,15 @@ func (lf *loaderFactory) SinkId() string {
 	return sinkTypeId
 }
 
-func (lf *loaderFactory) NewLoader(ctx context.Context, spec *entity.Spec, id string) (entity.Loader, error) {
-	return newLoader(ctx, spec, id, NewBigQueryClient(id, lf.client), &bigQueryMetadataMutex)
+func (lf *loaderFactory) NewLoader(ctx context.Context, c entity.Config) (entity.Loader, error) {
+	return newLoader(ctx, c.Spec, c.ID, NewBigQueryClient(c.ID, lf.client), &bigQueryMetadataMutex)
 }
 
-func (lf *loaderFactory) NewSinkExtractor(ctx context.Context, spec *entity.Spec, id string) (entity.Extractor, error) {
+func (lf *loaderFactory) NewSinkExtractor(ctx context.Context, c entity.Config) (entity.Extractor, error) {
 	return nil, nil
 }
 
-func (lf *loaderFactory) Close() error {
+func (lf *loaderFactory) Close(ctx context.Context) error {
 	if lf.client != nil {
 		if err := lf.client.Close(); err != nil {
 			return err

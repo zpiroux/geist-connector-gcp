@@ -138,7 +138,7 @@ func createDatastoreQuery(query Query) *datastore.Query {
 
 	if query.Type == CompositeKeyValue {
 		for _, filter := range query.CompositeKey {
-			dsq = dsq.Filter(filter.Key+" =", filter.Value)
+			dsq = dsq.FilterField(filter.Key, "=", filter.Value)
 		}
 	}
 	return dsq

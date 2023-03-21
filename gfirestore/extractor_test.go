@@ -36,7 +36,8 @@ func TestExtractor_ExtractFromSink(t *testing.T) {
 	var result []*entity.Transformed
 
 	err, retryable := extractor.ExtractFromSink(context.Background(), query, &result)
-	assert.NoErrorf(t, err, "retryable: %v", retryable)
+	assert.NoError(t, err)
+	assert.False(t, retryable)
 
 	tPrintf("Result from ExtractFromSink (All):\n")
 	err = printTransformed(result)
@@ -50,7 +51,8 @@ func TestExtractor_ExtractFromSink(t *testing.T) {
 	}
 
 	err, retryable = extractor.ExtractFromSink(context.Background(), query, &keyValueResult)
-	assert.NoErrorf(t, err, "retryable: %v", retryable)
+	assert.NoError(t, err)
+	assert.False(t, retryable)
 
 	tPrintf("Result from ExtractFromSink (KeyValue):\n")
 	err = printTransformed(keyValueResult)
@@ -63,7 +65,8 @@ func TestExtractor_ExtractFromSink(t *testing.T) {
 	}
 
 	err, retryable = extractor.ExtractFromSink(context.Background(), query, &keyValueResult)
-	assert.NoErrorf(t, err, "retryable: %v", retryable)
+	assert.NoError(t, err)
+	assert.False(t, retryable)
 
 	tPrintf("Result from ExtractFromSink (KeyValue):\n")
 	err = printTransformed(keyValueResult)

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"reflect"
 	"testing"
 
@@ -76,7 +76,7 @@ func NewGeistTestSpecLoader(t *testing.T) *GeistTestSpecLoader {
 
 func (g *GeistTestSpecLoader) LoadEventIntoSink(t *testing.T, eventInFile string) {
 	var retryable bool
-	fileBytes, err := ioutil.ReadFile(eventInFile)
+	fileBytes, err := os.ReadFile(eventInFile)
 	assert.NoError(t, err)
 	output, err := g.Transformer.Transform(context.Background(), fileBytes, &retryable)
 	assert.NoError(t, err)
@@ -125,7 +125,7 @@ func validateSpecWithModel(p *datastore.PropertyList) error {
 }
 
 func loadSpecFromFile(t *testing.T, path string) []byte {
-	fileBytes, err := ioutil.ReadFile(path)
+	fileBytes, err := os.ReadFile(path)
 	assert.NoError(t, err)
 	return fileBytes
 }
