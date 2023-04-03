@@ -12,18 +12,13 @@ import (
 	"cloud.google.com/go/bigquery"
 	"github.com/teltech/logger"
 	"github.com/zpiroux/geist/entity"
+	"github.com/zpiroux/geist/pkg/notify"
 )
 
 const (
 	TableUpdateBackoffTime         = 8 * time.Second
 	DefaultBigQueryDatasetLocation = "EU"
 )
-
-var log *logger.Log
-
-func init() {
-	log = logger.New()
-}
 
 type loader struct {
 	id       string
@@ -33,12 +28,12 @@ type loader struct {
 	client   BigQueryClient
 	inserter BigQueryInserter
 	mdMutex  *sync.Mutex
+	notifier *notify.Notifier
 }
 
 func newLoader(
 	ctx context.Context,
-	spec *entity.Spec,
-	id string,
+	c entity.Config,
 	client BigQueryClient,
 	metadataMutex *sync.Mutex) (*loader, error) {
 
@@ -46,11 +41,16 @@ func newLoader(
 		return nil, errors.New("invalid arguments, BigQueryClient cannot be nil")
 	}
 	l := loader{
-		id:      id,
-		spec:    spec,
+		id:      c.ID,
+		spec:    c.Spec,
 		client:  client,
 		mdMutex: metadataMutex,
 	}
+	var log *logger.Log
+	if c.Log {
+		log = logger.New()
+	}
+	l.notifier = notify.New(c.NotifyChan, log, 2, "gbigquery.loader", c.ID, c.Spec.Id())
 	err := l.init(ctx)
 	return &l, err
 }
@@ -63,7 +63,7 @@ func (l *loader) StreamLoad(ctx context.Context, data []*entity.Transformed) (st
 	}
 
 	if len(rows) == 0 {
-		log.Warnf(l.lgprfx()+"no rows to be inserted from transformed data, might be an error in stream spec: %+v", data)
+		l.notifier.Notify(entity.NotifyLevelWarn, "No rows to be inserted from transformed data, might be an error in stream spec")
 		return "", nil, false
 	}
 
@@ -77,14 +77,14 @@ func (l *loader) StreamLoad(ctx context.Context, data []*entity.Transformed) (st
 		// If new column(s) been added by table update it can take some time before BQ allows inserts to the new
 		// column. Until then insert will return with insert failed errors. To reduce request retries in this case
 		// back off slightly.
-		log.Warnf(l.lgprfx()+"BQ table probably not ready after table update, let's back off a few sec (err: %v)", err)
+		l.notifier.Notify(entity.NotifyLevelWarn, "BQ table probably not ready after table update, let's back off a few sec (err: %v)", err)
 		if !sleepCtx(ctx, TableUpdateBackoffTime) {
 			err = entity.ErrEntityShutdownRequested
 		}
 	}
 
 	if err == nil && l.spec.Ops.LogEventData {
-		log.Debugf(l.lgprfx()+"successfully inserted %d rows to BigQuery table %s", len(rows), l.table.TableID)
+		l.notifier.Notify(entity.NotifyLevelDebug, "Successfully inserted %d rows to BigQuery table %s", len(rows), l.table.TableID)
 	}
 
 	return "", err, true
@@ -279,7 +279,12 @@ func (l *loader) createRows(data []*entity.Transformed) ([]*Row, Columns, error)
 			if insertId, ok := rawRowData.Data[tableSpec.InsertIdFromId]; ok {
 				row.InsertId, ok = insertId.(string)
 				if !ok {
-					log.Errorf(l.lgprfx()+"corrupt insert ID in event with data %v, tableSpec: %+v", rawRowData, tableSpec)
+					// This can only happen in case of a badly written stream spec or
+					// an event is sent where its insert ID field is of the wrong type.
+					// The event will still be inserted but the effectiveness of BQ
+					// best effort deduplication is reduced. For this reason the issue
+					// is notified while processing is allowed to continue.
+					l.notifier.Notify(entity.NotifyLevelError, "Corrupt insert ID (%#v) in event, tableSpec: %+v", row.InsertId, tableSpec)
 				}
 			}
 		}
@@ -335,13 +340,18 @@ func (l *loader) createRow(tableSpec entity.Table, rawRowData *entity.Transforme
 
 func (l *loader) shouldSkipRow(col entity.Column, colName string, value any) bool {
 	if colName == "" {
-		log.Errorf(l.lgprfx()+"corrupt test event found for col: %+v, event disregarded", col)
+		// This can only happen when using the dynamic column generation option and
+		// the incoming event has an empty string in the required field. This type of
+		// filtering is allowed but should instead be done with a filter in the stream
+		// spec. The processing is allowed to continue but the issue is notified as
+		// an error.
+		l.notifier.Notify(entity.NotifyLevelError, "Column name could not be created for col: %+v, event invalid and disregarded", col)
 		return true
 	}
 
 	if l.spec.Sink.Config.DiscardInvalidData {
 		if errValidation := validateData(col, value); errValidation != nil {
-			log.Warnf(l.lgprfx()+"invalid data found for col: %+v, err: %v, event disregarded", col, errValidation)
+			l.notifier.Notify(entity.NotifyLevelWarn, "Invalid data found for col: %+v, err: %v, event disregarded", col, errValidation)
 			return true
 		}
 	}
@@ -438,7 +448,7 @@ func (l *loader) handleDynamicColumnUpdates(ctx context.Context, newColumns Colu
 		return nil
 	}
 
-	log.Infof(l.lgprfx()+"new columns found, to be created: %+v", newColumns)
+	l.notifier.Notify(entity.NotifyLevelInfo, "New columns found, to be created: %+v", newColumns)
 
 	var newBqColumns bigquery.Schema
 
@@ -483,8 +493,6 @@ func (l *loader) addColumnsToTable(ctx context.Context, newColumns bigquery.Sche
 		}
 		l.metadata = tm
 	}
-
-	log.Debugf(l.lgprfx()+"BQ update table returned err: %v", err)
 	return err
 }
 
