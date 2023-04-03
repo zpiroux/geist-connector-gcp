@@ -19,6 +19,8 @@ const (
 	testSpecDir = testDirPath + "specs/"
 
 	fooEventSpec = "kafkasrc-bigquerysink-fooevents.json"
+
+	loaderID = "someLoaderID"
 )
 
 var (
@@ -40,7 +42,7 @@ func TestLoader_StreamLoad(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, spec)
 
-	loader, err := newLoader(ctx, spec, "coolLoaderId", &MockBigQueryClient{}, &sync.Mutex{})
+	loader, err := newLoader(ctx, entity.Config{Spec: spec, ID: loaderID}, &MockBigQueryClient{}, &sync.Mutex{})
 	assert.NoError(t, err)
 	assert.NotNil(t, loader)
 
@@ -65,10 +67,10 @@ func TestLoader_StreamLoad(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify events are processed and inserted according to schema in GEIST stream spec
-	assert.Equal(t, string(testEvent1), mockDb["coolEventName"])
-	assert.Equal(t, "testEvent1eventId", mockDb["coolEventName-insertId"])
-	assert.Equal(t, string(testEvent2), mockDb["niceEventName"])
-	assert.Equal(t, "testEvent2eventId", mockDb["niceEventName-insertId"])
+	assert.Equal(t, string(testEvent1), mockDb["someEventName"])
+	assert.Equal(t, "testEvent1eventId", mockDb["someEventName-insertId"])
+	assert.Equal(t, string(testEvent2), mockDb["someOtherEventName"])
+	assert.Equal(t, "testEvent2eventId", mockDb["someOtherEventName-insertId"])
 }
 
 const testTableFooEvents = "geisttest-fooevents_v1"
@@ -81,7 +83,7 @@ func TestSpecificStreams(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, spec)
 
-	loader, err := newLoader(ctx, spec, "coolLoaderId", &MockBigQueryClient{}, &sync.Mutex{})
+	loader, err := newLoader(ctx, entity.Config{Spec: spec, ID: loaderID}, &MockBigQueryClient{}, &sync.Mutex{})
 	assert.NoError(t, err)
 	assert.NotNil(t, loader)
 
@@ -103,7 +105,7 @@ func TestDynamicColumnCreation(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, spec)
 
-	loader, err := newLoader(ctx, spec, "coolLoaderId", &MockBigQueryClient{}, &sync.Mutex{})
+	loader, err := newLoader(ctx, entity.Config{Spec: spec, ID: loaderID}, &MockBigQueryClient{}, &sync.Mutex{})
 	assert.NoError(t, err)
 	assert.NotNil(t, loader)
 
@@ -130,7 +132,7 @@ func TestDynamicColumnCreation(t *testing.T) {
 	// Table should have two columns after event is inserted
 	tm = tables[testTableDynColumns]
 	assert.Equal(t, 2, len(tm.Schema))
-	assert.Equal(t, "COOL_THING_HAPPENED", tm.Schema[1].Name)
+	assert.Equal(t, "SOME_THING_HAPPENED", tm.Schema[1].Name)
 
 	// Same event should try to create new columns
 	_, err, retryable = loader.StreamLoad(context.Background(), t1)
@@ -147,7 +149,7 @@ func TestColumnCloning(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, spec)
 
-	loader, err := newLoader(ctx, spec, "coolLoaderId", &MockBigQueryClient{}, &sync.Mutex{})
+	loader, err := newLoader(ctx, entity.Config{Spec: spec, ID: loaderID}, &MockBigQueryClient{}, &sync.Mutex{})
 	assert.NoError(t, err)
 	assert.NotNil(t, loader)
 
@@ -188,7 +190,7 @@ func TestDataValidation(t *testing.T) {
 		Type: "STRING",
 		Mode: "NULLABLE",
 	}
-	err := validateData(col, "mycoolstring")
+	err := validateData(col, "somestring")
 	assert.NoError(t, err)
 	err = validateData(col, 666)
 	assert.Error(t, err)
@@ -212,7 +214,7 @@ func TestDataValidation(t *testing.T) {
 	}
 	err = validateData(col, time.Now())
 	assert.NoError(t, err)
-	err = validateData(col, "mycooltimestamp")
+	err = validateData(col, "sometimestamp")
 	assert.Error(t, err)
 	emptyTimestamp := time.Time{}
 	err = validateData(col, emptyTimestamp)
@@ -371,7 +373,7 @@ func (i *MockBigQueryInserter) Put(ctx context.Context, src any) error {
 
 var testEvent1 = []byte(`
 {
-   "name": "coolEventName",
+   "name": "someEventName",
    "eventId": "testEvent1eventId",
    "lotsOfData": {
       "field1": "foo",
@@ -382,7 +384,7 @@ var testEvent1 = []byte(`
 
 var testEvent2 = []byte(`
 {
-   "name": "niceEventName",
+   "name": "someOtherEventName",
    "eventId": "testEvent2eventId",
    "lotsOfData": {
       "field1": "foo2",
@@ -393,7 +395,7 @@ var testEvent2 = []byte(`
 
 var testEvent3 = []byte(`
 {
-   "name": "COOL_THING_HAPPENED",
+   "name": "SOME_THING_HAPPENED",
    "eventId": "testEvent3eventId",
    "lotsOfData": {
       "field1": "foo3",
@@ -512,7 +514,7 @@ var streamSpecWithDynamicColumns = []byte(`
                "name": "gotest_dynamiccolumns",
                "dataset": "geisttest",
                "datasetCreation": {
-                  "description": "cool dataset",
+                  "description": "some dataset",
                   "location": "EU"
                },
                "insertIdFromId": "eventId",

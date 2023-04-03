@@ -24,14 +24,17 @@ type Config struct {
 // The mutex scope is per pod, but this is good enough in this case.
 var bigQueryMetadataMutex sync.Mutex
 
-type loaderFactory struct {
+type LoaderFactory struct {
 	config Config
 	client *bigquery.Client
 }
 
-func NewLoaderFactory(ctx context.Context, config Config) (entity.LoaderFactory, error) {
+// NewLoaderFactory creates a new BigQuery loader connector.
+// For standard usage, set bqClient to nil, making a default BigQuery client to be
+// created internally.
+func NewLoaderFactory(ctx context.Context, config Config, bqClient BigQueryClient) (*LoaderFactory, error) {
 	var err error
-	lf := &loaderFactory{
+	lf := &LoaderFactory{
 		config: config,
 	}
 
@@ -39,25 +42,27 @@ func NewLoaderFactory(ctx context.Context, config Config) (entity.LoaderFactory,
 		return nil, errors.New("no project id set")
 	}
 
-	if lf.client, err = bigquery.NewClient(ctx, config.ProjectId); err != nil {
-		return nil, err
+	if isNil(bqClient) {
+		if lf.client, err = bigquery.NewClient(ctx, config.ProjectId); err != nil {
+			return nil, err
+		}
 	}
 	return lf, nil
 }
 
-func (lf *loaderFactory) SinkId() string {
+func (lf *LoaderFactory) SinkId() string {
 	return sinkTypeId
 }
 
-func (lf *loaderFactory) NewLoader(ctx context.Context, c entity.Config) (entity.Loader, error) {
-	return newLoader(ctx, c.Spec, c.ID, NewBigQueryClient(c.ID, lf.client), &bigQueryMetadataMutex)
+func (lf *LoaderFactory) NewLoader(ctx context.Context, c entity.Config) (entity.Loader, error) {
+	return newLoader(ctx, c, NewBigQueryClient(c, lf.client), &bigQueryMetadataMutex)
 }
 
-func (lf *loaderFactory) NewSinkExtractor(ctx context.Context, c entity.Config) (entity.Extractor, error) {
+func (lf *LoaderFactory) NewSinkExtractor(ctx context.Context, c entity.Config) (entity.Extractor, error) {
 	return nil, nil
 }
 
-func (lf *loaderFactory) Close(ctx context.Context) error {
+func (lf *LoaderFactory) Close(ctx context.Context) error {
 	if lf.client != nil {
 		if err := lf.client.Close(); err != nil {
 			return err

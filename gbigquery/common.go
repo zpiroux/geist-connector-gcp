@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"cloud.google.com/go/bigquery"
+	"github.com/teltech/logger"
+	"github.com/zpiroux/geist/entity"
+	"github.com/zpiroux/geist/pkg/notify"
 	"google.golang.org/api/googleapi"
 )
 
@@ -30,15 +33,21 @@ type BigQueryClient interface {
 
 // Concrete bq wrapper client as returned by NewBigQueryClient
 type defaultBigQueryClient struct {
-	id     string
-	client *bigquery.Client
+	id       string
+	client   *bigquery.Client
+	notifier *notify.Notifier
 }
 
 // NewBigQueryClient provides a concrete wrapper client for internal usage by the Loader
-func NewBigQueryClient(id string, client *bigquery.Client) *defaultBigQueryClient {
+func NewBigQueryClient(c entity.Config, client *bigquery.Client) *defaultBigQueryClient {
+	var log *logger.Log
+	if c.Log {
+		log = logger.New()
+	}
 	return &defaultBigQueryClient{
-		id:     id,
-		client: client,
+		id:       c.ID,
+		client:   client,
+		notifier: notify.New(c.NotifyChan, log, 2, "gbigquery.client", c.ID, c.Spec.Id()),
 	}
 }
 
@@ -59,7 +68,7 @@ func (b *defaultBigQueryClient) CreateDataset(ctx context.Context, id string, md
 			if ok {
 				bqErr = fmt.Sprintf(bqErrFmtStr, e.Code, e.Message, e.Details, e.Errors)
 			}
-			log.Warnf(b.lgprfx()+"disregarding BQ dataset error: %s", bqErr)
+			b.notifier.Notify(entity.NotifyLevelWarn, "Disregarding BQ dataset error: %s", bqErr)
 			err = nil
 		}
 	}
@@ -82,10 +91,10 @@ func (b *defaultBigQueryClient) CreateTable(ctx context.Context, datasetId strin
 			if ok {
 				bqErr = fmt.Sprintf(bqErrFmtStr, e.Code, e.Message, e.Details, e.Errors)
 			}
-			log.Warnf(b.lgprfx()+"disregarding BQ table error: %v", bqErr)
+			b.notifier.Notify(entity.NotifyLevelWarn, "Disregarding BQ table error: %s", bqErr)
 			err = nil
 		} else {
-			log.Errorf(b.lgprfx()+"could not create table %+v, metadata: %+v, err: %v", table, tm, err)
+			b.notifier.Notify(entity.NotifyLevelError, "Could not create table %+v, metadata: %+v, err: %v", table, tm, err)
 		}
 	}
 	return table, err
@@ -152,7 +161,7 @@ func (b *defaultBigQueryClient) UpdateTable(
 			if ok {
 				bqErr = fmt.Sprintf(bqErrFmtStr, e.Code, e.Message, e.Details, e.Errors)
 			}
-			log.Warnf(b.lgprfx()+"disregarding BQ table update error: %v, returned metadata: %+v", bqErr, tmOut)
+			b.notifier.Notify(entity.NotifyLevelWarn, "Disregarding BQ table update error: %v, returned metadata: %+v", bqErr, tmOut)
 			err = nil
 			tmOut, err = table.Metadata(ctx)
 		}
@@ -161,12 +170,8 @@ func (b *defaultBigQueryClient) UpdateTable(
 	return tmOut, err
 }
 
-func (b *defaultBigQueryClient) lgprfx() string {
-	return "[xbigquery.client:" + b.id + "] "
-}
-
-// No good granular way to properly get real error codes from bq client, to detect these "non-errors" (in BQ loader scenarios).
-// Need to parse error string -.-
+// For legacy reasons error string parsing is used to detect these "non-errors"
+// (in BQ loader scenarios). Could be improved.
 func disregardError(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "already exists")
 }
