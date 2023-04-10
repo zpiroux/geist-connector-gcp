@@ -11,7 +11,9 @@
 
 ## Usage
 
-See [GEIST core repo](https://github.com/zpiroux/geist).
+See [GEIST core repo](https://github.com/zpiroux/geist) for general information.
+
+The BigQuery connector has been moved out to its own repo [here](https://github.com/zpiroux/geist-connector-bigquery).
 
 ## Limitations and improvement areas
 
