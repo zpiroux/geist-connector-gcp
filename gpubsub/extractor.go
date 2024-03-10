@@ -30,33 +30,6 @@ func init() {
 	log = logger.New()
 }
 
-type extractorConfig struct {
-	client PubsubClient
-	spec   *entity.Spec
-	topics []string
-	rs     receiveSettings
-}
-
-func newExtractorConfig(
-	client PubsubClient,
-	spec *entity.Spec,
-	topics []string,
-	rs receiveSettings) *extractorConfig {
-	return &extractorConfig{
-		client: client,
-		spec:   spec,
-		topics: topics,
-		rs:     rs,
-	}
-}
-
-type receiveSettings struct {
-	MaxOutstandingMessages int
-	MaxOutstandingBytes    int
-	Synchronous            bool
-	NumGoroutines          int
-}
-
 type extractor struct {
 	config     *extractorConfig
 	topic      Topic
@@ -75,28 +48,27 @@ func newExtractor(ctx context.Context, config *extractorConfig, id string) (*ext
 		subName string
 	)
 
+	err = config.validate()
+	if err != nil {
+		return nil, err
+	}
+
 	extractor := &extractor{
 		config: config,
 		id:     id,
 	}
 
-	if len(config.topics) == 0 {
-		return extractor, fmt.Errorf("no topics provided when creating extractor: %+v", extractor)
-	}
-
-	topic := config.client.Topic(config.topics[0]) // currently only support single topic in pubsub
-	spec := config.spec.Source.Config
-
-	switch spec.Subscription.Type {
+	switch config.sub.Type {
 	case SubTypeShared:
-		subName = spec.Subscription.Name
+		subName = config.sub.Name
 	case SubTypeUnique:
 		subName = "geist-" + id + "-" + time.Now().UTC().Format(timestampLayoutMicros)
 	default:
-		return extractor, fmt.Errorf("pubsub subscription type %s not supported", spec.Subscription.Type)
+		return extractor, fmt.Errorf("pubsub subscription type %s not supported", config.sub.Type)
 	}
 
-	extractor.sub, err = createSubscription(ctx, config, spec.Subscription.Type, subName, topic)
+	topic := config.client.Topic(config.topics[0]) // currently only supporting single topic in pubsub
+	extractor.sub, err = createSubscription(ctx, config, config.sub.Type, subName, topic)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +128,7 @@ func (e *extractor) StreamExtract(
 
 	var errPubsub error
 
-	if e.config.spec.Source.Config.Subscription.Type == SubTypeUnique {
+	if e.config.sub.Type == SubTypeUnique {
 		defer func() {
 			ctxSubDelete := context.Background() // Need fresh ctx here to avoid ctx canceled error
 			err := e.sub.Delete(ctxSubDelete)
@@ -348,13 +320,13 @@ func (e *extractor) handleEventProcessingResult(
 			fallthrough
 		case entity.HoueDiscard:
 			log.Warnf(e.lgprfx()+"a pubsub event failed downstream processing with result %+v; "+
-				" since this stream (%s) does not have DLQ enabled, the event will now be discarded, event: %+v, "+
-				"payload: %s", result, e.config.spec.Id(), msg, string(msg.Data))
+				" since this stream (%s) does not have DLQ enabled, the event will now be discarded, event ID: %s",
+				result, e.config.spec.Id(), msg.ID)
 			return actionContinue
 
 		case entity.HoueDlq:
-			log.Warnf(e.lgprfx()+"DLQ enabled in stream spec (%s) even though PubSub DLQ not yet implemented. "+
-				"Dumping event data and continue processing. event: %v, payload: %s", e.config.spec.Id(), msg, string(msg.Data))
+			log.Warnf(e.lgprfx()+"DLQ enabled in stream spec (%s) even though PubSub DLQ not yet implemented, "+
+				"event ID: %s", e.config.spec.Id(), msg.ID)
 			return actionContinue
 			//return e.moveEventToDLQ(ctx, msg) // in future update
 

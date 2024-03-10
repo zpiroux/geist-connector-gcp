@@ -14,6 +14,11 @@ import (
 
 var printTestOutput bool
 
+var (
+	testSub   = &SubscriptionConfig{Type: "shared", Name: "some-sub-name"}
+	testTopic = []string{"someTopic"}
+)
+
 func TestNewExtractor(t *testing.T) {
 
 	spec, err := entity.NewSpec(regSpecPubsub)
@@ -21,23 +26,34 @@ func TestNewExtractor(t *testing.T) {
 
 	printTestOutput = true
 	id := "mockId"
-	ec := &extractorConfig{
-		client: &MockClient{},
-		spec:   spec,
-	}
 
-	client := MockClient{}
+	client := &MockClient{}
 	ctx := context.Background()
 
-	tPrintf("Starting TestNewExtractor\n")
-
 	// Check handling of incorrect input
+	ec := &extractorConfig{}
 	_, err = newExtractor(ctx, ec, id)
 	assert.Error(t, err)
 
-	ec.client = &client
+	// Missing client
+	ec = &extractorConfig{spec: spec, topics: testTopic, sub: testSub}
 	_, err = newExtractor(ctx, ec, id)
-	assert.Error(t, err)
+	assert.Equal(t, ErrClienNotProvided, err)
+
+	// Missing topic
+	ec = &extractorConfig{client: client, spec: spec, sub: testSub}
+	_, err = newExtractor(ctx, ec, id)
+	assert.Equal(t, ErrTopicNotProvided, err)
+
+	// Missing subscription
+	ec = &extractorConfig{client: client, spec: spec, topics: testTopic}
+	_, err = newExtractor(ctx, ec, id)
+	assert.Equal(t, ErrSubNotProvided, err)
+
+	// Missing spec
+	ec = &extractorConfig{client: client, topics: testTopic, sub: testSub}
+	_, err = newExtractor(ctx, ec, id)
+	assert.Equal(t, ErrStreamSpecNotProvided, err)
 
 	// Valid input
 	extractor := newTestExtractor(t, regSpecPubsub)
@@ -92,7 +108,8 @@ func TestExtractor_SendToSource(t *testing.T) {
 	spec, err := entity.NewSpec(regSpecPubsub)
 	assert.NoError(t, err)
 
-	ec := newExtractorConfig(client, spec, []string{"coolTopic"}, receiveSettings{})
+	ec, err := newExtractorConfig(client, spec, []string{"coolTopic"}, testSub, receiveSettings{})
+	assert.NoError(t, err)
 	extractor, err := newExtractor(ctx, ec, "mockId")
 	assert.NoError(t, err)
 	assert.NotNil(t, extractor)
@@ -122,7 +139,8 @@ func newTestExtractor(t *testing.T, specData []byte) *extractor {
 	spec, err := entity.NewSpec(specData)
 	assert.NoError(t, err)
 
-	ec := newExtractorConfig(client, spec, []string{"coolTopic"}, receiveSettings{})
+	ec, err := newExtractorConfig(client, spec, []string{"coolTopic"}, testSub, receiveSettings{})
+	assert.NoError(t, err)
 	extractor, err := newExtractor(ctx, ec, "mockId")
 	assert.NoError(t, err)
 	assert.NotNil(t, extractor)
@@ -201,131 +219,136 @@ func tPrintf(format string, a ...any) {
 
 var regSpecPubsub = []byte(`
 {
-	"namespace": "geisttest",
-	"streamIdSuffix": "spec-reg",
-	"description": "An example of a simple custom/alternative Spec registration stream, using pubsub as source instead of geistapi.",
-	"version": 1,
-	"source": {
-	   "type": "pubsub",
-	   "config": {
-		  "topics": [
-			 {
-				"env": "all",
-				"names": [
-				   "geist-spec-reg"
-				]
-			 }
-		  ],
-		  "subscription": {
-			 "type": "shared",
-			 "name": "geist-spec-reg-sub"
-		  }
-	   }
-	},
-	"transform": {
-	   "extractFields": [
-		  {
-			 "fields": [
-				{
-				   "id": "namespace",
-				   "jsonPath": "namespace"
-				},
-				{
-				   "id": "idSuffix",
-				   "jsonPath": "streamIdSuffix"
-				},
-				{
-				   "id": "rawEvent",
-				   "type": "string"
-				}
-			 ]
-		  }
-	   ]
-	},
-	"sink": {
-	   "type": "firestore",
-	   "config": {
-		  "kinds": [
-			 {
-				"name": "EtlSpec",
-				"entityNameFromIds": {
-				   "ids": [
-					  "namespace",
-					  "idSuffix"
-				   ],
-				   "delimiter": "-"
-				},
-				"properties": [
-				   {
-					  "id": "rawEvent",
-					  "name": "specData",
-					  "index": false
-				   }
-				]
-			 }
-		  ]
-	   }
-	}
- }
-`)
+    "namespace": "geisttest",
+    "streamIdSuffix": "spec-reg",
+    "description": "An example of a simple custom/alternative Spec registration stream, using pubsub as source instead of geistapi.",
+    "version": 1,
+    "source": {
+        "type": "pubsub",
+        "config": {
+            "customConfig": {
+                "topics": [
+                    {
+                        "env": "all",
+                        "names": [
+                            "geist-spec-reg"
+                        ]
+                    }
+                ],
+                "subscription": {
+                    "type": "shared",
+                    "name": "geist-spec-reg-sub"
+                }
+            }
+        }
+    },
+    "transform": {
+        "extractFields": [
+            {
+                "fields": [
+                    {
+                        "id": "namespace",
+                        "jsonPath": "namespace"
+                    },
+                    {
+                        "id": "idSuffix",
+                        "jsonPath": "streamIdSuffix"
+                    },
+                    {
+                        "id": "rawEvent",
+                        "type": "string"
+                    }
+                ]
+            }
+        ]
+    },
+    "sink": {
+        "type": "firestore",
+        "config": {
+            "customConfig": {
+                "kinds": [
+                    {
+                        "name": "EtlSpec",
+                        "entityNameFromIds": {
+                            "ids": [
+                                "namespace",
+                                "idSuffix"
+                            ],
+                            "delimiter": "-"
+                        },
+                        "properties": [
+                            {
+                                "id": "rawEvent",
+                                "name": "specData",
+                                "index": false
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+}`)
 
 var pubsubSrcKafkaSinkSpec = []byte(`
 {
-	"namespace": "geisttest",
-	"streamIdSuffix": "foologanalytics",
-	"description": "A stream for transforming Foo log data into SystemX events, to provide interactive Foo log analytic capabilities, including cost-efficient metric creation.",
-	"version": 1,
-	"source": {
-	   "type": "pubsub",
-	   "config": {
-		  "topics": [
-			 {
-				"env": "all",
-				"names": [
-				   "geisttest-foologanalytics"
-				]
-			 }
-		  ],
-		  "subscription": {
-			 "type": "shared",
-			 "name": "geist-foologdata"
-		  }
-	   }
-	},
-	"transform": {
-	   "extractFields": [
-		  {
-			 "fields": [
-				{
-				   "id": "payload"
-				}
-			 ]
-		  }
-	   ]
-	},
-	"sink": {
-	   "type": "kafka",
-	   "config": {
-		  "topic": [
-			 {
-				"env": "all",
-				"topicSpec": {
-				   "name": "geisttest.foologdatasink",
-				   "numPartitions": 6,
-				   "replicationFactor": 3
-				}
-			 }
-		  ],
-		  "properties": [
-			 {
-				"key": "client.id",
-				"value": "geisttest_foologanalytics"
-			 }
-		  ],
-		  "message": {
-			 "payloadFromId": "payload"
-		  }
-	   }
-	}
- }
+    "namespace": "geisttest",
+    "streamIdSuffix": "foologanalytics",
+    "description": "A stream for transforming Foo log data into SystemX events, to provide interactive Foo log analytic capabilities, including cost-efficient metric creation.",
+    "version": 1,
+    "source": {
+        "type": "pubsub",
+        "config": {
+            "customConfig": {
+                "topics": [
+                    {
+                        "env": "all",
+                        "names": [
+                            "geisttest-foologanalytics"
+                        ]
+                    }
+                ],
+                "subscription": {
+                    "type": "shared",
+                    "name": "geist-foologdata"
+                }
+            }
+        }
+    },
+    "transform": {
+        "extractFields": [
+            {
+                "fields": [
+                    {
+                        "id": "payload"
+                    }
+                ]
+            }
+        ]
+    },
+    "sink": {
+        "type": "kafka",
+        "config": {
+            "topic": [
+                {
+                    "env": "all",
+                    "topicSpec": {
+                        "name": "geisttest.foologdatasink",
+                        "numPartitions": 6,
+                        "replicationFactor": 3
+                    }
+                }
+            ],
+            "properties": [
+                {
+                    "key": "client.id",
+                    "value": "geisttest_foologanalytics"
+                }
+            ],
+            "message": {
+                "payloadFromId": "payload"
+            }
+        }
+    }
+}
 `)

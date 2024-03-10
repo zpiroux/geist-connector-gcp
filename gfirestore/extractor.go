@@ -12,6 +12,7 @@ import (
 type extractor struct {
 	id               string
 	spec             *entity.Spec
+	sinkConfig       SinkConfig
 	client           FirestoreClient
 	defaultNamespace string
 }
@@ -46,9 +47,13 @@ func newExtractor(
 	if isNil(client) {
 		return nil, errors.New("client cannot be nil")
 	}
-
+	sinkConfig, err := NewSinkConfig(spec)
+	if err != nil {
+		return nil, err
+	}
 	var e = extractor{
 		spec:             spec,
+		sinkConfig:       sinkConfig,
 		id:               id,
 		client:           client,
 		defaultNamespace: defaultNamespace,
@@ -69,7 +74,7 @@ func (e *extractor) StreamExtract(
 // Currently only supporting Sink specs with a single Datastore "table" (kind)
 func (e *extractor) ExtractFromSink(ctx context.Context, query entity.ExtractorQuery, result *[]*entity.Transformed) (error, bool) {
 
-	if len(e.spec.Sink.Config.Kinds) == 0 {
+	if len(e.sinkConfig.Kinds) == 0 {
 		return errors.New("need at least one Kind specified in Sink config"), false
 	}
 
@@ -84,18 +89,18 @@ func (e *extractor) convertQueryToNative(query entity.ExtractorQuery) Query {
 	case entity.QueryTypeAll:
 		nativeQuery.Type = All
 		nativeQuery.Namespace = e.spec.Namespace
-		nativeQuery.Kind = e.spec.Sink.Config.Kinds[0].Name
+		nativeQuery.Kind = e.sinkConfig.Kinds[0].Name
 
 	case entity.QueryTypeKeyValue:
 		nativeQuery.Type = KeyValue
 		nativeQuery.Namespace = e.spec.Namespace
-		nativeQuery.Kind = e.spec.Sink.Config.Kinds[0].Name
+		nativeQuery.Kind = e.sinkConfig.Kinds[0].Name
 		nativeQuery.EntityName = query.Key
 
 	case entity.QueryTypeCompositeKeyValue:
 		nativeQuery.Type = CompositeKeyValue
 		nativeQuery.Namespace = e.spec.Namespace
-		nativeQuery.Kind = e.spec.Sink.Config.Kinds[0].Name
+		nativeQuery.Kind = e.sinkConfig.Kinds[0].Name
 		nativeQuery.CompositeKey = query.CompositeKey
 	}
 
@@ -178,7 +183,7 @@ func (e *extractor) getSpecIdFromPropName(name string) (string, error) {
 
 	// The properties are stored with Name as defined in the Sink part of the Spec.
 	// Only supporting one firestore "table" for now per spec (Kinds[0]).
-	for _, prop := range e.spec.Sink.Config.Kinds[0].Properties {
+	for _, prop := range e.sinkConfig.Kinds[0].Properties {
 
 		if prop.Name == name {
 			return prop.Id, nil
