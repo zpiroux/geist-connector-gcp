@@ -1,8 +1,10 @@
 package gpubsub
 
 import (
-	"cloud.google.com/go/pubsub"
 	"context"
+	"reflect"
+
+	"cloud.google.com/go/pubsub"
 )
 
 type PubsubClient interface {
@@ -13,4 +15,8 @@ type PubsubClient interface {
 
 type Topic interface {
 	Publish(ctx context.Context, msg *pubsub.Message) *pubsub.PublishResult
+}
+
+func isNil(v any) bool {
+	return v == nil || (reflect.ValueOf(v).Kind() == reflect.Ptr && reflect.ValueOf(v).IsNil())
 }

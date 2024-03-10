@@ -74,48 +74,50 @@ func (lf *MockExtractorFactory) Close(ctx context.Context) error {
 }
 
 var spec = []byte(`
-	{
-		"namespace": "my",
-		"streamIdSuffix": "tiny-stream",
-		"description": "Tiny test stream logging event data to console.",
-		"version": 1,
-		"source": {
-			"type": "pubsub",
-			"config": {
-				"topics": [
-				   {
-					  "env": "all",
-					  "names": [
-						 "my-cool-topic"
-					  ]
-				   }
-				],
-				"subscription": {
-				   "type": "unique"
-				}
-			 }		
-		},
-		"transform": {
-			"extractFields": [
-				{
-					"fields": [
-						{
-							"id": "rawEvent"
-						}
-					]
-				}
-			]
-		},
-		"sink": {
-			"type": "void",
-			"config": {
-				"properties": [
-				   {
-					  "key": "logEventData",
-					  "value": "true"
-				   }
-				]
-			}
-		}
-	}
+{
+    "namespace": "my",
+    "streamIdSuffix": "tiny-stream",
+    "description": "Tiny test stream logging event data to console.",
+    "version": 1,
+    "source": {
+        "type": "pubsub",
+        "config": {
+            "customConfig": {
+                "topics": [
+                    {
+                        "env": "all",
+                        "names": [
+                            "my-cool-topic"
+                        ]
+                    }
+                ],
+                "subscription": {
+                    "type": "unique"
+                }
+            }
+        }
+    },
+    "transform": {
+        "extractFields": [
+            {
+                "fields": [
+                    {
+                        "id": "rawEvent"
+                    }
+                ]
+            }
+        ]
+    },
+    "sink": {
+        "type": "void",
+        "config": {
+            "properties": [
+                {
+                    "key": "logEventData",
+                    "value": "true"
+                }
+            ]
+        }
+    }
+}
 `)

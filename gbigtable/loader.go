@@ -45,6 +45,7 @@ func init() {
 type loader struct {
 	id           string
 	spec         *entity.Spec
+	sinkConfig   SinkConfig
 	client       BigTableClient
 	adminClient  BigTableAdminClient
 	openedTables map[string]BigTableTable
@@ -60,19 +61,24 @@ func newLoader(
 	if isNil(client) || isNil(adminClient) {
 		return nil, errors.New("invalid arguments, clients cannot be nil")
 	}
+	sinkConfig, err := NewSinkConfig(spec)
+	if err != nil {
+		return nil, err
+	}
 	var l = loader{
 		id:          id,
 		spec:        spec,
+		sinkConfig:  sinkConfig,
 		client:      client,
 		adminClient: adminClient,
 	}
 
 	l.openedTables = make(map[string]BigTableTable)
-	err := l.createTables(ctx)
+	err = l.createTables(ctx)
 	if err != nil {
 
 		if otherStreamCreatingTable(err) {
-			log.Warnf(l.lgprfx()+"another executor's bigtable sink just created the table %+v, just opening it instead", spec.Sink.Config.Tables)
+			log.Warnf(l.lgprfx()+"another executor's bigtable sink just created the table %+v, just opening it instead", sinkConfig.Tables)
 		} else {
 			return &l, err
 		}
@@ -114,7 +120,7 @@ func (l *loader) StreamLoad(ctx context.Context, data []*entity.Transformed) (st
 		return rowKey, errors.New("StreamLoad called without data to load"), false
 	}
 
-	for _, table := range l.spec.Sink.Config.Tables {
+	for _, table := range l.sinkConfig.Tables {
 		if l.applicableEvent(ctx, table, data[0]) {
 
 			if table.RowKey.Predefined == PreDefinedRowKeyKeysInMap {
@@ -140,7 +146,7 @@ func (l *loader) Shutdown(ctx context.Context) {
 	// Nothing to shut down
 }
 
-func (l *loader) upsertDataFromMap(ctx context.Context, table entity.Table, event *entity.Transformed) (string, error, bool) {
+func (l *loader) upsertDataFromMap(ctx context.Context, table Table, event *entity.Transformed) (string, error, bool) {
 
 	var (
 		err    error
@@ -185,7 +191,7 @@ func (l *loader) upsertDataFromMap(ctx context.Context, table entity.Table, even
 	return rowKey, err, retryable
 }
 
-func (l *loader) upsertData(ctx context.Context, table entity.Table, event *entity.Transformed) (string, error, bool) {
+func (l *loader) upsertData(ctx context.Context, table Table, event *entity.Transformed) (string, error, bool) {
 
 	if event == nil {
 		return "", errors.New("upsertData received nil event"), false
@@ -215,7 +221,7 @@ func (l *loader) upsertData(ctx context.Context, table entity.Table, event *enti
 	return rowKey, nil, true
 }
 
-func (l *loader) createMutation(ctx context.Context, table entity.Table, event *entity.Transformed) (*bigtable.Mutation, error, bool) {
+func (l *loader) createMutation(ctx context.Context, table Table, event *entity.Transformed) (*bigtable.Mutation, error, bool) {
 	var value []byte
 	mut := bigtable.NewMutation()
 	timestamp := bigtable.Now()
@@ -253,7 +259,7 @@ func (l *loader) createMutation(ctx context.Context, table entity.Table, event *
 
 }
 
-func (l *loader) generateColumnName(column entity.ColumnQualifier, event *entity.Transformed) (string, error) {
+func (l *loader) generateColumnName(column ColumnQualifier, event *entity.Transformed) (string, error) {
 
 	var suffix string
 
@@ -276,7 +282,7 @@ func (l *loader) generateColumnName(column entity.ColumnQualifier, event *entity
 	return column.NameFromId.Prefix + suffix, nil
 }
 
-func (l *loader) createRowKey(ctx context.Context, table entity.Table, event *entity.Transformed) string {
+func (l *loader) createRowKey(ctx context.Context, table Table, event *entity.Transformed) string {
 	var (
 		rowKey string
 		key    string
@@ -326,7 +332,7 @@ func invertedTimestamp() int64 {
 // It also returns true if there's no Whitelisting config in the spec, allowing all events.
 // This is mostly used in multi-table Sink specs, since otherwise full event filtering is handled in
 // the Transform part of the spec.
-func (l *loader) applicableEvent(ctx context.Context, table entity.Table, event *entity.Transformed) bool {
+func (l *loader) applicableEvent(ctx context.Context, table Table, event *entity.Transformed) bool {
 
 	if table.Whitelist == nil {
 		return true
@@ -349,7 +355,7 @@ func (l *loader) createTables(ctx context.Context) error {
 		return fmt.Errorf("could not fetch table list: %v", err)
 	}
 
-	for _, table := range l.spec.Sink.Config.Tables {
+	for _, table := range l.sinkConfig.Tables {
 
 		if !sliceContains(tables, table.Name) {
 			if err := l.adminClient.CreateTable(ctx, table.Name); err != nil {
@@ -370,7 +376,7 @@ func (l *loader) createTables(ctx context.Context) error {
 	return err
 }
 
-func (l *loader) createColumnFamilies(ctx context.Context, table entity.Table, tblInfo *bigtable.TableInfo) error {
+func (l *loader) createColumnFamilies(ctx context.Context, table Table, tblInfo *bigtable.TableInfo) error {
 
 	for _, columnFamily := range table.ColumnFamilies {
 		if !sliceContains(tblInfo.Families, columnFamily.Name) {
@@ -386,7 +392,7 @@ func (l *loader) createColumnFamilies(ctx context.Context, table entity.Table, t
 	return nil
 }
 
-func (l *loader) setGCPolicy(ctx context.Context, tableName string, columnFamily entity.ColumnFamily) error {
+func (l *loader) setGCPolicy(ctx context.Context, tableName string, columnFamily ColumnFamily) error {
 
 	switch columnFamily.GarbageCollectionPolicy.Type {
 
@@ -419,7 +425,7 @@ func sliceContains(list []string, target string) bool {
 
 func (l *loader) openTables(ctx context.Context) error {
 
-	for _, table := range l.spec.Sink.Config.Tables {
+	for _, table := range l.sinkConfig.Tables {
 
 		t := l.client.Open(table.Name)
 		if t == nil {

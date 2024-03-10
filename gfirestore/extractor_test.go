@@ -90,7 +90,7 @@ func TestQueryCreation(t *testing.T) {
 
 	dsq := createDatastoreQuery(firestoreExtractorQuery)
 	validationString := fmt.Sprintf("%+v", dsq)
-	assert.Equal(t, 237, len(validationString))
+	assert.Equal(t, 243, len(validationString))
 	fmt.Printf("len: %d, dsq: %s", len(validationString), validationString)
 }
 

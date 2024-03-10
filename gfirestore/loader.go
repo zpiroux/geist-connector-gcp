@@ -23,6 +23,7 @@ type loader struct {
 	client           FirestoreClient
 	defaultNamespace string
 	spec             *entity.Spec
+	sinkConfig       SinkConfig
 	id               string
 }
 
@@ -35,9 +36,13 @@ func newLoader(
 	if isNil(client) {
 		return nil, errors.New("client cannot be nil")
 	}
-
+	sinkConfig, err := NewSinkConfig(spec)
+	if err != nil {
+		return nil, err
+	}
 	var g = loader{
 		spec:             spec,
+		sinkConfig:       sinkConfig,
 		id:               id,
 		client:           client,
 		defaultNamespace: defaultNamespace,
@@ -65,7 +70,7 @@ func (l *loader) StreamLoad(ctx context.Context, data []*entity.Transformed) (st
 		return resourceId, errors.New("streamLoad called without data to load (data[0] == nil)"), false
 	}
 
-	for i, kind := range l.spec.Sink.Config.Kinds {
+	for i, kind := range l.sinkConfig.Kinds {
 		resourceId, err, retryable = l.put(ctx, kind, data[0])
 		if err != nil {
 			return resourceId, fmt.Errorf("error inserting data, error: %v", err), retryable
@@ -82,7 +87,7 @@ func (l *loader) Shutdown(ctx context.Context) {
 	// Nothing to shut down
 }
 
-func (l *loader) put(ctx context.Context, kind entity.Kind, t *entity.Transformed) (string, error, bool) {
+func (l *loader) put(ctx context.Context, kind Kind, t *entity.Transformed) (string, error, bool) {
 
 	var err error
 
@@ -130,7 +135,7 @@ func (l *loader) put(ctx context.Context, kind entity.Kind, t *entity.Transforme
 	return entityName, err, true
 }
 
-func (l *loader) getEntityName(kind entity.Kind, t *entity.Transformed) string {
+func (l *loader) getEntityName(kind Kind, t *entity.Transformed) string {
 
 	var entityName string
 

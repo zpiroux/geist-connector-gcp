@@ -56,18 +56,28 @@ func (ef *extractorFactory) SourceId() string {
 }
 
 func (ef *extractorFactory) NewExtractor(ctx context.Context, c entity.Config) (entity.Extractor, error) {
-	return newExtractor(ctx, ef.createPubsubExtractorConfig(c.Spec), c.ID)
+
+	extractorConfig, err := ef.createPubsubExtractorConfig(c.Spec)
+	if err != nil {
+		return nil, err
+	}
+	return newExtractor(ctx, extractorConfig, c.ID)
 }
 
-func (s *extractorFactory) createPubsubExtractorConfig(spec *entity.Spec) *extractorConfig {
+func (s *extractorFactory) createPubsubExtractorConfig(spec *entity.Spec) (*extractorConfig, error) {
+	sourceConfig, err := NewSourceConfig(spec)
+	if err != nil {
+		return nil, err
+	}
 	return newExtractorConfig(
 		s.client,
 		spec,
-		s.topicNamesFromSpec(spec.Source.Config.Topics),
-		s.configureReceiveSettings(spec.Source.Config))
+		s.topicNamesFromSpec(sourceConfig.Topics),
+		sourceConfig.Subscription,
+		s.configureReceiveSettings(sourceConfig))
 }
 
-func (s *extractorFactory) configureReceiveSettings(c entity.SourceConfig) receiveSettings {
+func (s *extractorFactory) configureReceiveSettings(c SourceConfig) receiveSettings {
 	var rs receiveSettings
 	if c.MaxOutstandingMessages == nil {
 		rs.MaxOutstandingMessages = s.config.MaxOutstandingMessages
@@ -95,10 +105,10 @@ func (s *extractorFactory) configureReceiveSettings(c entity.SourceConfig) recei
 	return rs
 }
 
-func (s *extractorFactory) topicNamesFromSpec(topicsInSpec []entity.Topics) []string {
+func (s *extractorFactory) topicNamesFromSpec(topicsInSpec []Topics) []string {
 	var topicNames []string
 	for _, topics := range topicsInSpec {
-		if topics.Env == entity.EnvironmentAll {
+		if topics.Env == string(entity.EnvironmentAll) {
 			topicNames = topics.Names
 			break
 		}

@@ -30,6 +30,7 @@ type Query struct {
 type extractor struct {
 	id           string
 	spec         *entity.Spec
+	sinkConfig   SinkConfig
 	client       BigTableClient
 	adminClient  BigTableAdminClient
 	openedTables map[string]BigTableTable
@@ -44,9 +45,16 @@ func newExtractor(
 	if isNil(client) || isNil(adminClient) {
 		return nil, errors.New("invalid arguments, clients cannot be nil")
 	}
+
+	sinkConfig, err := NewSinkConfig(spec)
+	if err != nil {
+		return nil, err
+	}
+
 	var e = extractor{
 		id:          id,
 		spec:        spec,
+		sinkConfig:  sinkConfig,
 		client:      client,
 		adminClient: adminClient,
 	}
@@ -58,7 +66,7 @@ func newExtractor(
 
 func (e *extractor) ExtractFromSink(ctx context.Context, query entity.ExtractorQuery, result *[]*entity.Transformed) (error, bool) {
 
-	if len(e.spec.Sink.Config.Tables) == 0 {
+	if len(e.sinkConfig.Tables) == 0 {
 		return errors.New("need at least one Table specified in Sink config"), false
 	}
 
@@ -156,7 +164,7 @@ func (e *extractor) Extract(ctx context.Context, query entity.ExtractorQuery, re
 func (e *extractor) openTables(ctx context.Context) error {
 
 	// For now only Sink entity is available for BigTable extractor spec
-	for _, table := range e.spec.Sink.Config.Tables {
+	for _, table := range e.sinkConfig.Tables {
 
 		t := e.client.Open(table.Name)
 		if t == nil {
