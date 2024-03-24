@@ -9,20 +9,22 @@
    "source": {
       "type": "kafka",
       "config": {
-         "topics": [
-            {
-               "env": "all",
-               "names": [
-                  "foo.events"
-               ]
-            }
-         ],
-         "properties": [
-            {
-               "key": "group.id",
-               "value": "foons_some_user_data"
-            }
-         ]
+         "customConfig": {
+            "topics": [
+               {
+                  "env": "all",
+                  "names": [
+                     "foo.events"
+                  ]
+               }
+            ],
+            "properties": [
+               {
+                  "key": "group.id",
+                  "value": "foons_some_user_data"
+               }
+            ]
+         }
       }
    },
    "transform": {
@@ -63,41 +65,43 @@
    "sink": {
       "type": "bigtable",
       "config": {
-         "tables": [
-            {
-               "name": "some_user_data",
-               "rowKey": {
-                  "keys": [
-                     "custId",
-                     "pId"
-                  ],
-                  "delimiter": "#"
-               },
-               "columnFamilies": [
-                  {
-                     "name": "d",
-                     "garbageCollectionPolicy": {
-                        "type": "maxVersions",
-                        "value": 10
-                     },
-                     "columnQualifiers": [
-                        {
-                           "id": "sessionId",
-                           "name": "sid"
+         "customConfig": {
+            "tables": [
+               {
+                  "name": "some_user_data",
+                  "rowKey": {
+                     "keys": [
+                        "custId",
+                        "pId"
+                     ],
+                     "delimiter": "#"
+                  },
+                  "columnFamilies": [
+                     {
+                        "name": "d",
+                        "garbageCollectionPolicy": {
+                           "type": "maxVersions",
+                           "value": 10
                         },
-                        {
-                           "id": "pName",
-                           "name": "pn"
-                        },
-                        {
-                           "id": "pCurrency",
-                           "name": "pc"
-                        }
-                     ]
-                  }
-               ]
-            }
-         ]
+                        "columnQualifiers": [
+                           {
+                              "id": "sessionId",
+                              "name": "sid"
+                           },
+                           {
+                              "id": "pName",
+                              "name": "pn"
+                           },
+                           {
+                              "id": "pCurrency",
+                              "name": "pc"
+                           }
+                        ]
+                     }
+                  ]
+               }
+            ]
+         }
       }
    }
 }

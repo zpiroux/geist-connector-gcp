@@ -9,7 +9,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.9.0
 	github.com/teltech/logger v1.3.0
-	github.com/zpiroux/geist v0.10.0
+	github.com/zpiroux/geist v0.11.0
 	google.golang.org/api v0.169.0
 )
 
