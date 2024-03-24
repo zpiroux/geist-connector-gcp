@@ -127,8 +127,8 @@ github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415/go.mod h1:
 github.com/xeipuuv/gojsonschema v1.2.0 h1:LhYJRs+L4fBtjZUfuSZIKGeVu0QRy8e5Xi7D17UxZ74=
 github.com/xeipuuv/gojsonschema v1.2.0/go.mod h1:anYRn/JVcOK2ZgGU+IjEV4nwlhoK5sQluxsYJ78Id3Y=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
-github.com/zpiroux/geist v0.10.0 h1:MyDf2c87DUGeljfLPAK071dQL06aRaqw/mf3O4f6y8A=
-github.com/zpiroux/geist v0.10.0/go.mod h1:W9ZJQYcJphXNsBCR5KjkfycN43wsRXcw4RRMvlcfxPs=
+github.com/zpiroux/geist v0.11.0 h1:fhUzJVOK6qaSXaA+LYdxLubwKY0BvTVg4SUSiXqqhSg=
+github.com/zpiroux/geist v0.11.0/go.mod h1:W9ZJQYcJphXNsBCR5KjkfycN43wsRXcw4RRMvlcfxPs=
 go.einride.tech/aip v0.66.0 h1:XfV+NQX6L7EOYK11yoHHFtndeaWh3KbD9/cN/6iWEt8=
 go.einride.tech/aip v0.66.0/go.mod h1:qAhMsfT7plxBX+Oy7Huol6YUvZ0ZzdUz26yZsQwfl1M=
 go.opencensus.io v0.24.0 h1:y73uSU6J157QMP2kn2r30vwW1A2W2WFwSCGnAVxeaD0=
