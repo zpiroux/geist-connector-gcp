@@ -13,7 +13,9 @@
 
 See [GEIST core repo](https://github.com/zpiroux/geist) for general information.
 
-The BigQuery connector has been moved out to its own repo [here](https://github.com/zpiroux/geist-connector-bigquery).
+Note:
+* The BigQuery connector has been moved out to its own repo [here](https://github.com/zpiroux/geist-connector-bigquery).
+* The Bigtable connector has been moved out to its own repo [here](https://github.com/zpiroux/geist-connector-bigtable).
 
 ## Limitations and improvement areas
 
